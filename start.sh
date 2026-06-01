@@ -41,7 +41,8 @@ source venv/bin/activate
 python -m pip install --upgrade pip >/dev/null
 python -m pip install -r requirements.txt
 
-echo "Alfred is starting on http://localhost:8000"
+echo "Alfred is starting on http://0.0.0.0:8000"
+echo "If you connect from another machine, use http://<HOST_IP>:8000"
 echo "Log file: $LOG_FILE"
 
 python -u main.py 2>&1 | tee "$LOG_FILE"
