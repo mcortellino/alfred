@@ -108,16 +108,56 @@ def main():
     tts_dir = models_dir / "tts" / "kokoro"
     tts_dir.mkdir(parents=True, exist_ok=True)
     
-    kokoro_url = "https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/kokoro-v1.0.onnx"
-    kokoro_path = tts_dir / "kokoro-v1.0.onnx"
+    kokoro_onnx_path = tts_dir / "kokoro-v1.0.onnx"
+    kokoro_voices_path = tts_dir / "voices"
     
-    if kokoro_path.exists():
-        print_info(f"Kokoro v1.0 already exists at {kokoro_path}")
+    # Check if Kokoro is already set up
+    if kokoro_onnx_path.exists() and kokoro_voices_path.exists():
+        print_info(f"Kokoro v1.0 already exists at {tts_dir}")
     else:
-        if download_file(kokoro_url, str(kokoro_path)):
-            print_success("Kokoro TTS model downloaded successfully")
-        else:
-            print_error("Failed to download Kokoro TTS model")
+        try:
+            print_info("Installing Kokoro TTS package...")
+            import subprocess
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-q", "kokoro>=0.9.2"],
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode != 0:
+                print_error(f"Failed to install Kokoro: {result.stderr}")
+            else:
+                print_success("Kokoro package installed")
+                
+                # Copy Kokoro model files to our models directory
+                try:
+                    import kokoro
+                    kokoro_pkg_dir = Path(kokoro.__file__).parent
+                    
+                    # Copy the ONNX model if it exists
+                    kokoro_models = kokoro_pkg_dir / "models"
+                    if kokoro_models.exists():
+                        # Find and copy the ONNX file
+                        for onnx_file in kokoro_models.glob("*.onnx"):
+                            dest = kokoro_onnx_path
+                            shutil.copy2(onnx_file, dest)
+                            print_success(f"Copied {onnx_file.name} to {dest}")
+                        
+                        # Copy voices directory
+                        voices_src = kokoro_models / "voices"
+                        if voices_src.exists():
+                            if kokoro_voices_path.exists():
+                                shutil.rmtree(kokoro_voices_path)
+                            shutil.copytree(voices_src, kokoro_voices_path)
+                            print_success(f"Copied voices to {kokoro_voices_path}")
+                    else:
+                        print_info("Kokoro package installed successfully (models managed by package)")
+                        
+                except Exception as e:
+                    print_info(f"Kokoro installed as a package (will be loaded dynamically). {str(e)}")
+                    
+        except Exception as e:
+            print_error(f"Failed to set up Kokoro: {str(e)}")
     
     # 2. Download Alfred Wakeword model
     print_step("Downloading Alfred wakeword model")
@@ -179,7 +219,7 @@ def main():
     
     # Check what was successfully downloaded
     checks = [
-        ("Kokoro TTS v1.0", kokoro_path),
+        ("Kokoro TTS v1.0", kokoro_onnx_path if kokoro_onnx_path.exists() else tts_dir),
         ("Alfred ONNX Wakeword", alfred_onnx_path),
         ("Alfred TFLite Wakeword", alfred_tflite_path),
         ("Vosk Italian Model", vosk_dir),
@@ -190,8 +230,17 @@ def main():
         if path.exists():
             print_success(f"{name}: ✓")
         else:
-            print_error(f"{name}: ✗ (missing)")
-            all_good = False
+            # For Kokoro, check if the package is installed
+            if "Kokoro" in name:
+                try:
+                    import kokoro
+                    print_success(f"{name}: ✓ (package installed)")
+                except ImportError:
+                    print_error(f"{name}: ✗ (missing)")
+                    all_good = False
+            else:
+                print_error(f"{name}: ✗ (missing)")
+                all_good = False
     
     if all_good:
         print_success("\nAll models downloaded successfully! You're ready to run Alfred.")

@@ -5,8 +5,9 @@ This directory contains scripts to automatically download and set up the require
 ## Models Downloaded
 
 1. **Kokoro TTS v1.0** - Text-to-speech engine
-   - Source: Hugging Face (hexgrad/Kokoro-82M)
-   - Location: `backend/models/tts/kokoro/kokoro-v1.0.onnx`
+   - Source: PyPI (Python package) with models from Hugging Face
+   - Installation: Installed via `pip install kokoro`
+   - Location: Python package site-packages (managed automatically)
 
 2. **Alfred Wakeword Models** - Voice activation detection
    - Source: GitHub (fwartner/home-assistant-wakewords-collection)
@@ -47,16 +48,18 @@ python3 download_models.py
 ## Requirements
 
 - **Python 3.8+** (already used by the backend)
-- **Internet connection** for downloading models
-- **~500MB disk space** for all models
+- **Internet connection** for downloading models and pip packages
+- **~300MB disk space** for all models (Kokoro installed via pip adds ~200MB to site-packages)
 
 ## What the Script Does
 
 1. Creates necessary directories under `backend/models/`
-2. Downloads each model from its source
-3. Extracts archive files (zip, tar.gz) to the correct locations
-4. Verifies all models were downloaded successfully
-5. Provides detailed progress information
+2. Installs Kokoro TTS package via pip (if not already installed)
+3. Downloads wakeword models (Alfred ONNX and TFLite) from GitHub
+4. Downloads Vosk Italian model from AlphaCephei
+5. Extracts archive files (zip, tar.gz) to the correct locations
+6. Verifies all models were set up successfully
+7. Provides detailed progress information
 
 ## Troubleshooting
 
@@ -83,8 +86,11 @@ python3 download_models.py
 
 If you prefer to download models manually:
 
-1. **Kokoro TTS**: https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/kokoro-v1.0.onnx
-   - Place in: `backend/models/tts/kokoro/`
+1. **Kokoro TTS**: Install via pip
+   ```bash
+   pip install kokoro>=0.9.2
+   ```
+   The Kokoro package includes all necessary model files and voices.
 
 2. **Alfred Wakeword**:
    - ONNX: https://github.com/fwartner/home-assistant-wakewords-collection/raw/main/en/alfred/alfred.onnx
