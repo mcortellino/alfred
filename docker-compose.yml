@@ -1,0 +1,22 @@
+services:
+  alfred:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: alfred
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    environment:
+      ALFRED_WAKEWORD_NAME: alfred
+      ALFRED_WAKE_MODEL: /app/backend/models/wakewords/alfred.onnx
+      ALFRED_VOSK_MODEL: /app/backend/models/vosk-model-it-0.22
+      ALFRED_TTS_MODELS_DIR: /app/backend/models/tts/kokoro
+      ALFRED_TTS_AUTO_DOWNLOAD: "1"
+      ALFRED_TV_EPG_URLS: https://epgshare01.online/epgshare01/epg_ripper_IT1.xml.gz
+      ALFRED_RADIO_M3U_URL: https://raw.githubusercontent.com/Tundrak/IPTV-Italia/main/ipradioita.m3u
+      ALFRED_RADIO_LOGO_API_URL: https://all.api.radio-browser.info/json/stations/bycountrycodeexact/IT?hidebroken=true&order=clickcount&reverse=true&limit=1500
+    volumes:
+      - ./backend/models:/app/backend/models
+      - ./backend/data:/app/backend/data
+      - ./backend/logs:/app/backend/logs
