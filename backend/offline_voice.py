@@ -34,10 +34,44 @@ class OfflineVoiceEngine:
         self._wakeword_mode = "vosk-keyphrase"
         self._oww_error = ""
         OpenWakeWordModel = None
+        # Prefer pyopen-wakeword (Rhasspy) where available; fall back to openwakeword.
         try:
-            from openwakeword.model import Model as OpenWakeWordModel
-        except Exception as exc:  # pragma: no cover - environment-specific
-            self._oww_error = f"openwakeword import failed: {exc}"
+            pyow = None
+            try:
+                import pyopen_wakeword as pyow  # type: ignore
+            except Exception:
+                try:
+                    import pyopenwakeword as pyow  # type: ignore
+                except Exception:
+                    pyow = None
+
+            if pyow is not None:
+                if hasattr(pyow, "Model"):
+                    OpenWakeWordModel = getattr(pyow, "Model")
+                elif hasattr(pyow, "WakeWordModel"):
+                    OpenWakeWordModel = getattr(pyow, "WakeWordModel")
+                else:
+                    # Provide a thin adapter if pyopen_wakeword exposes a load function
+                    class OpenWakeWordAdapter:
+                        def __init__(self, **kwargs):
+                            if hasattr(pyow, "load_model"):
+                                self._m = pyow.load_model(**kwargs)
+                            else:
+                                raise RuntimeError("pyopen_wakeword: cannot construct model")
+
+                        def predict(self, data):
+                            if hasattr(self._m, "predict"):
+                                return self._m.predict(data)
+                            if hasattr(self._m, "detect"):
+                                return self._m.detect(data)
+                            raise RuntimeError("pyopen_wakeword model has no predict/detect method")
+
+                    OpenWakeWordModel = OpenWakeWordAdapter
+        except Exception:
+            try:
+                from openwakeword.model import Model as OpenWakeWordModel
+            except Exception as exc:  # pragma: no cover - environment-specific
+                self._oww_error = f"openwakeword import failed: {exc}"
 
         try:
             from vosk import Model as VoskModel
