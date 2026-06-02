@@ -36,8 +36,8 @@ class OfflineVoiceEngine:
         self._oww_error = ""
         OpenWakeWordModel = None
         # Prefer pyopen-wakeword (Rhasspy) where available; fall back to openwakeword.
+        pyow = None
         try:
-            pyow = None
             try:
                 import pyopen_wakeword as pyow  # type: ignore
             except Exception:
@@ -75,6 +75,9 @@ class OfflineVoiceEngine:
 
                     OpenWakeWordModel = OpenWakeWordAdapter
         except Exception:
+            pyow = None
+
+        if OpenWakeWordModel is None:
             try:
                 from openwakeword.model import Model as OpenWakeWordModel
             except Exception as exc:  # pragma: no cover - environment-specific
