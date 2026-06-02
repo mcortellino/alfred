@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from enum import EnumMeta
 from pathlib import Path
 from typing import Any
 
@@ -46,10 +47,16 @@ class OfflineVoiceEngine:
                     pyow = None
 
             if pyow is not None:
-                if hasattr(pyow, "Model"):
-                    OpenWakeWordModel = getattr(pyow, "Model")
-                elif hasattr(pyow, "WakeWordModel"):
+                if hasattr(pyow, "WakeWordModel"):
                     OpenWakeWordModel = getattr(pyow, "WakeWordModel")
+                elif hasattr(pyow, "Model"):
+                    candidate = getattr(pyow, "Model")
+                    if not isinstance(candidate, EnumMeta):
+                        OpenWakeWordModel = candidate
+                    else:
+                        # pyopen_wakeword may expose a Model enum rather than a model loader;
+                        # treat that as incompatible and fall back to openwakeword.
+                        OpenWakeWordModel = None
                 else:
                     # Provide a thin adapter if pyopen_wakeword exposes a load function
                     class OpenWakeWordAdapter:
