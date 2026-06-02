@@ -69,16 +69,16 @@ class OfflineVoiceEngine:
 
                 if not self._oww_error:
                     if wake_model_path.lower().endswith(".onnx"):
-                        printf("Using ONNX wake word model from ALFRED_WAKE_MODEL: %s", wake_model_path)
+                        print("Using ONNX wake word model from ALFRED_WAKE_MODEL: %s", wake_model_path)
                         self._oww_model = OpenWakeWordModel(inference_framework="onnx", **model_kwargs)
                         self._oww_framework = "onnx"
                     else:
                         try:
-                            printf("Using TFLite wake word model from ALFRED_WAKE_MODEL: %s", wake_model_path)
+                            print("Using TFLite wake word model from ALFRED_WAKE_MODEL: %s", wake_model_path)
                             self._oww_model = OpenWakeWordModel(**model_kwargs)
                             self._oww_framework = "tflite"
                         except Exception:
-                            printf("Failed to load ALFRED_WAKE_MODEL as TFLite, trying ONNX: %s", wake_model_path)
+                            print("Failed to load ALFRED_WAKE_MODEL as TFLite, trying ONNX: %s", wake_model_path)
                             self._oww_model = OpenWakeWordModel(inference_framework="onnx", **model_kwargs)
                             self._oww_framework = "onnx"
             except Exception as exc:  # pragma: no cover - environment-specific
