@@ -4,10 +4,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 
-# Load .env file if it exists
+# Load .env file if it exists, stripping CRLF line endings for Linux compatibility
 if [[ -f "$ROOT_DIR/.env" ]]; then
     set -a
-    source "$ROOT_DIR/.env"
+    source <(sed 's/\r$//' "$ROOT_DIR/.env")
     set +a
 fi
 
