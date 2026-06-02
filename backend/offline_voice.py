@@ -49,22 +49,40 @@ class OfflineVoiceEngine:
             if pyow is not None:
                 if hasattr(pyow, "WakeWordModel"):
                     OpenWakeWordModel = getattr(pyow, "WakeWordModel")
+                elif hasattr(pyow, "OpenWakeWord"):
+                    class OpenWakeWordAdapter:
+                        def __init__(self, **kwargs):
+                            if kwargs.get("wakeword_models"):
+                                model_path = kwargs["wakeword_models"][0]
+                                self._m = pyow.OpenWakeWord.from_model(model_path)
+                            else:
+                                wakeword_name = os.getenv("ALFRED_WAKEWORD_NAME", "hey_jarvis")
+                                enum_name = wakeword_name.upper().replace(" ", "_")
+                                if hasattr(pyow, "Model") and isinstance(getattr(pyow, "Model"), EnumMeta):
+                                    try:
+                                        model_enum = getattr(pyow, "Model")[enum_name]
+                                    except KeyError:
+                                        model_enum = list(getattr(pyow, "Model"))[0]
+                                    self._m = pyow.OpenWakeWord.from_builtin(model_enum)
+                                else:
+                                    raise RuntimeError("pyopen_wakeword: no compatible builtin model enum")
+
+                        def predict(self, data):
+                            if hasattr(self._m, "predict"):
+                                return self._m.predict(data)
+                            if hasattr(self._m, "detect"):
+                                return self._m.detect(data)
+                            raise RuntimeError("pyopen_wakeword model has no predict/detect method")
+
+                    OpenWakeWordModel = OpenWakeWordAdapter
                 elif hasattr(pyow, "Model"):
                     candidate = getattr(pyow, "Model")
                     if not isinstance(candidate, EnumMeta):
                         OpenWakeWordModel = candidate
-                    else:
-                        # pyopen_wakeword may expose a Model enum rather than a model loader;
-                        # treat that as incompatible and fall back to openwakeword.
-                        OpenWakeWordModel = None
-                else:
-                    # Provide a thin adapter if pyopen_wakeword exposes a load function
+                elif hasattr(pyow, "load_model"):
                     class OpenWakeWordAdapter:
                         def __init__(self, **kwargs):
-                            if hasattr(pyow, "load_model"):
-                                self._m = pyow.load_model(**kwargs)
-                            else:
-                                raise RuntimeError("pyopen_wakeword: cannot construct model")
+                            self._m = pyow.load_model(**kwargs)
 
                         def predict(self, data):
                             if hasattr(self._m, "predict"):
@@ -79,9 +97,21 @@ class OfflineVoiceEngine:
 
         if OpenWakeWordModel is None:
             try:
-                from openwakeword.model import Model as OpenWakeWordModel
+                import openwakeword
+                if hasattr(openwakeword, "model") and hasattr(openwakeword.model, "Model"):
+                    OpenWakeWordModel = openwakeword.model.Model
+                elif hasattr(openwakeword, "Model"):
+                    OpenWakeWordModel = openwakeword.Model
+                elif hasattr(openwakeword, "OpenWakeWord"):
+                    OpenWakeWordModel = openwakeword.OpenWakeWord
+                else:
+                    raise ImportError("openwakeword installed but no usable Model/OpenWakeWord class found")
             except Exception as exc:  # pragma: no cover - environment-specific
-                self._oww_error = f"openwakeword import failed: {exc}"
+                self._oww_error = (
+                    f"openwakeword import failed: {exc}. "
+                    "Install it in the same Python interpreter used to run Alfred: "
+                    "python -m pip install openwakeword"
+                )
 
         try:
             from vosk import Model as VoskModel
