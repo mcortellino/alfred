@@ -251,3 +251,139 @@ class LocalTTSEngine:
                     wav_file.setframerate(sample_rate)
                     wav_file.writeframes(pcm16.tobytes())
                 return buffer.getvalue()
+
+class PiperTTSEngine:
+    """Local/offline TTS wrapper using Piper TTS."""
+
+    _DEFAULT_VOICE = "en_US-lessac-medium"
+    _DEFAULT_VOICE_PATH = "en_US-lessac-medium.onnx"
+
+    def __init__(self) -> None:
+        self.enabled = False
+        self.reason = "tts not initialized"
+        self._lock = threading.Lock()
+        self._voice_preference = "auto"
+        self._voice_id_override = ""
+        self._voice_name = os.getenv("ALFRED_TTS_MODEL", self._DEFAULT_VOICE).strip()
+        self._voice_path_override = os.getenv("ALFRED_TTS_VOICE_PATH", "").strip()
+        self._piper_voice = None
+
+        try:
+            from piper import PiperVoice
+
+            self._piper_voice_cls = PiperVoice
+            self.enabled = True
+            self.reason = "ok"
+        except Exception as exc:  # pragma: no cover - runtime environment specific
+            self._piper_voice_cls = None
+            self.reason = f"piper init failed: {exc}"
+
+    def status(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "reason": self.reason,
+            "engine": "piper",
+            "voice": self._voice_name,
+            "voice_preference": self._voice_preference,
+            "voice_id_override": self._voice_id_override,
+            "selected_voice": {"id": self._voice_name, "name": self._voice_name, "languages": ["en-US"], "gender": ""},
+        }
+
+    def list_voices(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": self._voice_name,
+                "name": self._voice_name,
+                "languages": ["en-US"],
+                "gender": "",
+                "installed": self.enabled,
+            }
+        ]
+
+    def configure(self, voice_preference: str | None = None, voice_id: str | None = None) -> dict[str, Any]:
+        if voice_preference:
+            pref = voice_preference.strip().lower()
+            if pref not in ("auto", "female", "male"):
+                raise ValueError("voice_preference must be one of: auto, female, male")
+            self._voice_preference = pref
+
+        if voice_id is not None:
+            normalized = voice_id.strip()
+            if normalized and normalized != self._voice_name:
+                raise ValueError(f"Unknown voice_id: {normalized}")
+            self._voice_id_override = normalized
+
+        return self.status()
+
+    def _get_voice_path(self) -> Path:
+        """Get the path to the voice model file."""
+        voice_path = None
+        
+        # If override is set, check if it's a file or directory
+        if self._voice_path_override:
+            override_path = Path(self._voice_path_override)
+            if override_path.is_file():
+                voice_path = override_path
+            elif override_path.is_dir():
+                # Look for .onnx file in the directory
+                voice_path = override_path / f"{self._voice_name}.onnx"
+            else:
+                # Assume it's meant to be a file path
+                voice_path = override_path
+        
+        if not voice_path or not voice_path.exists():
+            # Try common locations for Piper voice models
+            piper_models_dir = Path.home() / ".local" / "share" / "piper" / "voices"
+            voice_path = piper_models_dir / f"{self._voice_name}.onnx"
+        
+        if not voice_path.exists():
+            # Try current directory fallback
+            voice_path = Path(self._DEFAULT_VOICE_PATH)
+        
+        if not voice_path.exists():
+            raise RuntimeError(
+                f"Voice model not found: {voice_path}. "
+                f"Download with: python3 -m piper.download_voices {self._voice_name}"
+            )
+        
+        # Check for required metadata file (.json or .onnx.json)
+        json_path = voice_path.with_suffix(".json")
+        if not json_path.exists():
+            json_path = Path(str(voice_path) + ".json")
+        
+        if not json_path.exists():
+            raise RuntimeError(
+                f"Voice metadata file not found. Expected {voice_path.with_suffix('.json')} or {voice_path}.json. "
+                f"Download with: python3 -m piper.download_voices {self._voice_name}"
+            )
+        
+        return voice_path
+
+    def _load_voice(self) -> Any:
+        """Load the Piper voice model."""
+        if self._piper_voice is not None:
+            return self._piper_voice
+        if not self._piper_voice_cls:
+            raise RuntimeError(self.reason)
+
+        voice_path = self._get_voice_path()
+        self._piper_voice = self._piper_voice_cls.load(str(voice_path))
+        return self._piper_voice
+
+    def synthesize(self, text: str, lang: str = "en") -> bytes:
+        if not self.enabled:
+            raise RuntimeError(self.reason)
+
+        with self._lock:
+            voice = self._load_voice()
+            with io.BytesIO() as buffer:
+                with wave.open(buffer, "wb") as wav_file:
+                    voice.synthesize_wav(text, wav_file)
+                return buffer.getvalue()
+
+
+def create_tts_engine() -> Any:
+    engine_name = os.getenv("ALFRED_TTS_ENGINE", "kokoro").strip().lower()
+    if engine_name in ("pipertts", "piper"):
+        return PiperTTSEngine()
+    return LocalTTSEngine()

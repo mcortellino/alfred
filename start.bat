@@ -6,10 +6,23 @@ echo   A L F R E D  –  Home Assistant
 echo  ================================================
 echo.
 
+cd /d "%~dp0"
+
+:: Load .env file
+if exist ".env" (
+    for /f "usebackq delims== tokens=1,*" %%a in (".env") do (
+        if not "%%a"=="" (
+            if not "%%a:~0,1%%"=="#" (
+                set "%%a=%%b"
+            )
+        )
+    )
+)
+
 cd /d "%~dp0backend"
 
 :: Configure offline voice model environment variables
-set "ALFRED_WAKEWORD_NAME=alfred"
+set "ALFRED_WAKEWORD_NAME=%ALFRED_WAKEWORD_NAME%"
 
 set "WAKE_ONNX=%CD%\models\wakewords\alfred.onnx"
 set "WAKE_TFLITE=%CD%\models\wakewords\alfred.tflite"
@@ -26,7 +39,7 @@ if exist "%WAKE_ONNX%" (
     echo           - %WAKE_TFLITE%
 )
 
-set "ALFRED_VOSK_MODEL=%CD%\models\vosk-model-it-0.22"
+set "ALFRED_VOSK_MODEL=%CD%\models\vosk-model-small-it-0.22"
 if not exist "%ALFRED_VOSK_MODEL%" (
     set "ALFRED_VOSK_MODEL="
     for /d %%D in ("%CD%\models\vosk-model*") do (

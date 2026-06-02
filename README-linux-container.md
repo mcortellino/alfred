@@ -47,11 +47,21 @@ Edit `docker-compose.yml` and adjust:
 
 - `ALFRED_WAKE_MODEL`
 - `ALFRED_VOSK_MODEL`
+- `ALFRED_TTS_ENGINE` (kokoro or pipertts)
+- `ALFRED_TTS_MODEL` (for `pipertts`, e.g. `xlow`)
+- `ALFRED_TTS_SAMPLE_RATE` (audio sample rate for pipertts output, default `24000`)
 - `ALFRED_TTS_MODELS_DIR`
 - `ALFRED_TTS_AUTO_DOWNLOAD`
 - `ALFRED_TV_EPG_URLS` (comma-separated XMLTV/XMLTV.GZ URLs)
 - `ALFRED_RADIO_M3U_URL` (radio stations M3U source)
 - `ALFRED_RADIO_LOGO_API_URL` (Radio Browser API endpoint for logo enrichment)
+
+To use the optional `pipertts` TTS backend, set `ALFRED_TTS_ENGINE=pipertts` and
+`ALFRED_TTS_MODEL=xlow`, then install it with:
+
+```bash
+python -m pip install -r backend/requirements-pipertts.txt
+```
 
 The TV list UI now supports open-source schedule preview (Now/Next) when one of
 the configured XMLTV feeds is reachable.

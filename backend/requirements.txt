@@ -8,3 +8,4 @@ pyopen-wakeword
 vosk>=0.3.45
 onnxruntime>=1.18.0
 kokoro-onnx==0.4.7
+piper-tts

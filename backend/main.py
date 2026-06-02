@@ -12,7 +12,7 @@ import asyncio
 from curl_cffi.requests import AsyncSession as _CurlSession
 from skill_manager import SkillManager
 from offline_voice import OfflineVoiceEngine
-from tts_engine import LocalTTSEngine
+from tts_engine import create_tts_engine
 import os
 
 app = FastAPI(title="Alfred – Home Assistant API")
@@ -64,9 +64,9 @@ if NO_VOICE:
             self.reason = "tts disabled by ALFRED_NO_VOICE"
 
         def status(self) -> dict[str, Any]:
-            return {"enabled": self.enabled, "reason": self.reason}
+            return {"enabled": self.enabled, "reason": self.reason, "engine": "disabled", "voice_preference": "auto", "voice_id_override": ""}
 
-        def list_voices(self) -> list[str]:
+        def list_voices(self) -> list[dict[str, Any]]:
             return []
 
         def configure(self, voice_preference: str | None = None, voice_id: str | None = None):
@@ -79,7 +79,7 @@ if NO_VOICE:
     tts_engine = TTSStub()
 else:
     offline_voice_engine = OfflineVoiceEngine()
-    tts_engine = LocalTTSEngine()
+    tts_engine = create_tts_engine()
 
 
 class CommandRequest(BaseModel):
@@ -316,4 +316,15 @@ if frontend_path.exists():
 
 if __name__ == "__main__":
     import uvicorn
+    tts_status = tts_engine.status()
+    voice_status = offline_voice_engine.status()
+    print(
+        f"Starting Alfred with TTS engine={tts_status.get('engine', 'unknown')} "
+        f"model={tts_status.get('model') or tts_status.get('voice_id_override') or 'default'} "
+        f"enabled={tts_status.get('enabled')}"
+    )
+    print(
+        f"Voice support enabled={voice_status.get('enabled')} "
+        f"reason={voice_status.get('reason', 'unknown')}"
+    )
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
