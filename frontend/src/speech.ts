@@ -3,7 +3,7 @@
  * speech.js - Offline-first wake-word + command capture for Alfred.
  *
  * Primary path:
- *   Browser mic capture -> websocket binary stream -> Python pyopen-wakeword + Vosk
+ *   Browser mic capture -> websocket binary stream -> Python openwakeword + Vosk
  * Fallback path:
  *   Browser SpeechRecognition (previous behavior)
  */

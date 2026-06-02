@@ -274,9 +274,7 @@ async def voice_websocket(websocket: WebSocket):
     session = offline_voice_engine.new_session()
     await websocket.send_json({
         "type": "ready",
-        "engine": "pyopen-wakeword+vosk",
-        "wakeword": offline_voice_engine.wakeword_name,
-    })
+            "engine": "openwakeword+vosk",
 
     try:
         while True:

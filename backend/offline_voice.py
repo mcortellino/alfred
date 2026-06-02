@@ -33,75 +33,18 @@ class OfflineVoiceEngine:
         self._vosk_model = None
         self.vosk_model_path = ""
         self._oww_framework = "none"
-        self._wakeword_mode = "vosk-keyphrase"
+        self._wakeword_mode = "none"
         self._oww_error = ""
         OpenWakeWordModel = None
-        # Prefer openwakeword when installed; otherwise fall back to pyopen-wakeword / openwakeword variants.
+        # Only support the upstream `openwakeword` package. No fallbacks.
         try:
-            if importlib.util.find_spec("openwakeword") is not None:
-                import openwakeword
-                if hasattr(openwakeword, "model") and hasattr(openwakeword.model, "Model"):
-                    OpenWakeWordModel = openwakeword.model.Model
-                elif hasattr(openwakeword, "Model"):
-                    OpenWakeWordModel = openwakeword.Model
-                elif hasattr(openwakeword, "OpenWakeWord"):
-                    OpenWakeWordModel = openwakeword.OpenWakeWord
-            else:
-                pyow = None
-                try:
-                    import pyopen_wakeword as pyow  # type: ignore
-                except Exception:
-                    try:
-                        import pyopenwakeword as pyow  # type: ignore
-                    except Exception:
-                        pyow = None
-
-                if pyow is not None:
-                    if hasattr(pyow, "WakeWordModel"):
-                        OpenWakeWordModel = getattr(pyow, "WakeWordModel")
-                    elif hasattr(pyow, "OpenWakeWord"):
-                        class OpenWakeWordAdapter:
-                            def __init__(self, **kwargs):
-                                if kwargs.get("wakeword_models"):
-                                    model_path = kwargs["wakeword_models"][0]
-                                    self._m = pyow.OpenWakeWord.from_model(model_path)
-                                else:
-                                    wakeword_name = os.getenv("ALFRED_WAKEWORD_NAME", "hey_jarvis")
-                                    enum_name = wakeword_name.upper().replace(" ", "_")
-                                    if hasattr(pyow, "Model") and isinstance(getattr(pyow, "Model"), EnumMeta):
-                                        try:
-                                            model_enum = getattr(pyow, "Model")[enum_name]
-                                        except KeyError:
-                                            model_enum = list(getattr(pyow, "Model"))[0]
-                                        self._m = pyow.OpenWakeWord.from_builtin(model_enum)
-                                    else:
-                                        raise RuntimeError("pyopen_wakeword: no compatible builtin model enum")
-
-                            def predict(self, data):
-                                if hasattr(self._m, "predict"):
-                                    return self._m.predict(data)
-                                if hasattr(self._m, "detect"):
-                                    return self._m.detect(data)
-                                raise RuntimeError("pyopen_wakeword model has no predict/detect method")
-
-                        OpenWakeWordModel = OpenWakeWordAdapter
-                    elif hasattr(pyow, "Model"):
-                        candidate = getattr(pyow, "Model")
-                        if not isinstance(candidate, EnumMeta):
-                            OpenWakeWordModel = candidate
-                    elif hasattr(pyow, "load_model"):
-                        class OpenWakeWordAdapter:
-                            def __init__(self, **kwargs):
-                                self._m = pyow.load_model(**kwargs)
-
-                            def predict(self, data):
-                                if hasattr(self._m, "predict"):
-                                    return self._m.predict(data)
-                                if hasattr(self._m, "detect"):
-                                    return self._m.detect(data)
-                                raise RuntimeError("pyopen_wakeword model has no predict/detect method")
-
-                        OpenWakeWordModel = OpenWakeWordAdapter
+            import openwakeword
+            if hasattr(openwakeword, "model") and hasattr(openwakeword.model, "Model"):
+                OpenWakeWordModel = openwakeword.model.Model
+            elif hasattr(openwakeword, "Model"):
+                OpenWakeWordModel = openwakeword.Model
+            elif hasattr(openwakeword, "OpenWakeWord"):
+                OpenWakeWordModel = openwakeword.OpenWakeWord
         except Exception as exc:  # pragma: no cover - environment-specific
             self._oww_error = f"openwakeword import failed: {exc}"
 
@@ -156,12 +99,13 @@ class OfflineVoiceEngine:
         if self._oww_model is not None:
             self._wakeword_mode = "openwakeword"
             self.reason = "ok"
+            self.enabled = True
         else:
-            self._wakeword_mode = "vosk-keyphrase"
+            # No wakeword engine available — disable offline voice engine.
+            self._wakeword_mode = "none"
             self._oww_framework = "none"
-            self.reason = f"openwakeword unavailable; using vosk keyphrase fallback: {self._oww_error or 'not configured'}"
-
-        self.enabled = True
+            self.reason = f"openwakeword unavailable: {self._oww_error or 'not configured'}"
+            return
 
     def status(self) -> dict[str, Any]:
         return {
@@ -209,18 +153,10 @@ class OfflineVoiceSession:
 
         self._KaldiRecognizer = KaldiRecognizer
         self._recognizer = self._new_recognizer()
-        self._wake_recognizer = self._new_wake_recognizer()
-        self._last_wake_partial = ""
         self._last_cmd_partial = ""
 
     def _new_recognizer(self):
         rec = self._KaldiRecognizer(self.engine._vosk_model, 16000)
-        rec.SetWords(False)
-        return rec
-
-    def _new_wake_recognizer(self):
-        grammar = '["alfred", "hey alfred", "ok alfred"]'
-        rec = self._KaldiRecognizer(self.engine._vosk_model, 16000, grammar)
         rec.SetWords(False)
         return rec
 
@@ -272,9 +208,11 @@ class OfflineVoiceSession:
         return events
 
     def _check_wakeword(self, pcm16: np.ndarray, pcm16_bytes: bytes) -> dict[str, Any] | None:
+        # If openwakeword isn't available, don't attempt any fallback.
         if self.engine._oww_model is None:
-            return self._check_wakeword_vosk(pcm16_bytes)
+            return None
 
+        # Buffer incoming audio and run the openwakeword model on fixed-size frames.
         self._wake_buffer = np.concatenate((self._wake_buffer, pcm16))
 
         frame_size = 1280  # 80 ms @ 16 kHz
@@ -293,52 +231,6 @@ class OfflineVoiceSession:
                     "name": self.engine.wakeword_name,
                     "score": round(score, 3),
                 }
-
-        return None
-
-    def _check_wakeword_vosk(self, pcm16_bytes: bytes) -> dict[str, Any] | None:
-        def _has_wake(text: str) -> bool:
-            normalized = (text or "").strip().lower()
-            return "alfred" in normalized
-
-        if self._wake_recognizer.AcceptWaveform(pcm16_bytes):
-            try:
-                text = json.loads(self._wake_recognizer.Result()).get("text", "")
-            except Exception:
-                text = ""
-            if text.strip():
-                print(f"[WAKE FINAL] {text.strip()}", flush=True)
-            if _has_wake(text):
-                self._wake_recognizer = self._new_wake_recognizer()
-                self._listening_for_command = True
-                self._command_deadline = time.monotonic() + self.engine.command_timeout_s
-                self._recognizer = self._new_recognizer()
-                return {
-                    "type": "wake",
-                    "source": "vosk-keyphrase",
-                    "name": self.engine.wakeword_name,
-                    "score": 1.0,
-                }
-
-        try:
-            partial = json.loads(self._wake_recognizer.PartialResult()).get("partial", "")
-        except Exception:
-            partial = ""
-        partial_norm = partial.strip()
-        if partial_norm and partial_norm != self._last_wake_partial:
-            self._last_wake_partial = partial_norm
-            print(f"[WAKE PARTIAL] {partial_norm}", flush=True)
-        if _has_wake(partial):
-            self._wake_recognizer = self._new_wake_recognizer()
-            self._listening_for_command = True
-            self._command_deadline = time.monotonic() + self.engine.command_timeout_s
-            self._recognizer = self._new_recognizer()
-            return {
-                "type": "wake",
-                "source": "vosk-keyphrase",
-                "name": self.engine.wakeword_name,
-                "score": 1.0,
-            }
 
         return None
 
