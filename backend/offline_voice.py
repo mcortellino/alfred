@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import time
@@ -35,68 +36,9 @@ class OfflineVoiceEngine:
         self._wakeword_mode = "vosk-keyphrase"
         self._oww_error = ""
         OpenWakeWordModel = None
-        # Prefer pyopen-wakeword (Rhasspy) where available; fall back to openwakeword.
-        pyow = None
+        # Prefer openwakeword when installed; otherwise fall back to pyopen-wakeword / openwakeword variants.
         try:
-            try:
-                import pyopen_wakeword as pyow  # type: ignore
-            except Exception:
-                try:
-                    import pyopenwakeword as pyow  # type: ignore
-                except Exception:
-                    pyow = None
-
-            if pyow is not None:
-                if hasattr(pyow, "WakeWordModel"):
-                    OpenWakeWordModel = getattr(pyow, "WakeWordModel")
-                elif hasattr(pyow, "OpenWakeWord"):
-                    class OpenWakeWordAdapter:
-                        def __init__(self, **kwargs):
-                            if kwargs.get("wakeword_models"):
-                                model_path = kwargs["wakeword_models"][0]
-                                self._m = pyow.OpenWakeWord.from_model(model_path)
-                            else:
-                                wakeword_name = os.getenv("ALFRED_WAKEWORD_NAME", "hey_jarvis")
-                                enum_name = wakeword_name.upper().replace(" ", "_")
-                                if hasattr(pyow, "Model") and isinstance(getattr(pyow, "Model"), EnumMeta):
-                                    try:
-                                        model_enum = getattr(pyow, "Model")[enum_name]
-                                    except KeyError:
-                                        model_enum = list(getattr(pyow, "Model"))[0]
-                                    self._m = pyow.OpenWakeWord.from_builtin(model_enum)
-                                else:
-                                    raise RuntimeError("pyopen_wakeword: no compatible builtin model enum")
-
-                        def predict(self, data):
-                            if hasattr(self._m, "predict"):
-                                return self._m.predict(data)
-                            if hasattr(self._m, "detect"):
-                                return self._m.detect(data)
-                            raise RuntimeError("pyopen_wakeword model has no predict/detect method")
-
-                    OpenWakeWordModel = OpenWakeWordAdapter
-                elif hasattr(pyow, "Model"):
-                    candidate = getattr(pyow, "Model")
-                    if not isinstance(candidate, EnumMeta):
-                        OpenWakeWordModel = candidate
-                elif hasattr(pyow, "load_model"):
-                    class OpenWakeWordAdapter:
-                        def __init__(self, **kwargs):
-                            self._m = pyow.load_model(**kwargs)
-
-                        def predict(self, data):
-                            if hasattr(self._m, "predict"):
-                                return self._m.predict(data)
-                            if hasattr(self._m, "detect"):
-                                return self._m.detect(data)
-                            raise RuntimeError("pyopen_wakeword model has no predict/detect method")
-
-                    OpenWakeWordModel = OpenWakeWordAdapter
-        except Exception:
-            pyow = None
-
-        if OpenWakeWordModel is None:
-            try:
+            if importlib.util.find_spec("openwakeword") is not None:
                 import openwakeword
                 if hasattr(openwakeword, "model") and hasattr(openwakeword.model, "Model"):
                     OpenWakeWordModel = openwakeword.model.Model
@@ -104,14 +46,64 @@ class OfflineVoiceEngine:
                     OpenWakeWordModel = openwakeword.Model
                 elif hasattr(openwakeword, "OpenWakeWord"):
                     OpenWakeWordModel = openwakeword.OpenWakeWord
-                else:
-                    raise ImportError("openwakeword installed but no usable Model/OpenWakeWord class found")
-            except Exception as exc:  # pragma: no cover - environment-specific
-                self._oww_error = (
-                    f"openwakeword import failed: {exc}. "
-                    "Install it in the same Python interpreter used to run Alfred: "
-                    "python -m pip install openwakeword"
-                )
+            else:
+                pyow = None
+                try:
+                    import pyopen_wakeword as pyow  # type: ignore
+                except Exception:
+                    try:
+                        import pyopenwakeword as pyow  # type: ignore
+                    except Exception:
+                        pyow = None
+
+                if pyow is not None:
+                    if hasattr(pyow, "WakeWordModel"):
+                        OpenWakeWordModel = getattr(pyow, "WakeWordModel")
+                    elif hasattr(pyow, "OpenWakeWord"):
+                        class OpenWakeWordAdapter:
+                            def __init__(self, **kwargs):
+                                if kwargs.get("wakeword_models"):
+                                    model_path = kwargs["wakeword_models"][0]
+                                    self._m = pyow.OpenWakeWord.from_model(model_path)
+                                else:
+                                    wakeword_name = os.getenv("ALFRED_WAKEWORD_NAME", "hey_jarvis")
+                                    enum_name = wakeword_name.upper().replace(" ", "_")
+                                    if hasattr(pyow, "Model") and isinstance(getattr(pyow, "Model"), EnumMeta):
+                                        try:
+                                            model_enum = getattr(pyow, "Model")[enum_name]
+                                        except KeyError:
+                                            model_enum = list(getattr(pyow, "Model"))[0]
+                                        self._m = pyow.OpenWakeWord.from_builtin(model_enum)
+                                    else:
+                                        raise RuntimeError("pyopen_wakeword: no compatible builtin model enum")
+
+                            def predict(self, data):
+                                if hasattr(self._m, "predict"):
+                                    return self._m.predict(data)
+                                if hasattr(self._m, "detect"):
+                                    return self._m.detect(data)
+                                raise RuntimeError("pyopen_wakeword model has no predict/detect method")
+
+                        OpenWakeWordModel = OpenWakeWordAdapter
+                    elif hasattr(pyow, "Model"):
+                        candidate = getattr(pyow, "Model")
+                        if not isinstance(candidate, EnumMeta):
+                            OpenWakeWordModel = candidate
+                    elif hasattr(pyow, "load_model"):
+                        class OpenWakeWordAdapter:
+                            def __init__(self, **kwargs):
+                                self._m = pyow.load_model(**kwargs)
+
+                            def predict(self, data):
+                                if hasattr(self._m, "predict"):
+                                    return self._m.predict(data)
+                                if hasattr(self._m, "detect"):
+                                    return self._m.detect(data)
+                                raise RuntimeError("pyopen_wakeword model has no predict/detect method")
+
+                        OpenWakeWordModel = OpenWakeWordAdapter
+        except Exception as exc:  # pragma: no cover - environment-specific
+            self._oww_error = f"openwakeword import failed: {exc}"
 
         try:
             from vosk import Model as VoskModel
@@ -133,12 +125,16 @@ class OfflineVoiceEngine:
                         model_kwargs["wakeword_models"] = [wake_model_path]
 
                 if not self._oww_error:
-                    try:
-                        self._oww_model = OpenWakeWordModel(**model_kwargs)
-                        self._oww_framework = "tflite"
-                    except Exception:
+                    if wake_model_path.lower().endswith(".onnx"):
                         self._oww_model = OpenWakeWordModel(inference_framework="onnx", **model_kwargs)
                         self._oww_framework = "onnx"
+                    else:
+                        try:
+                            self._oww_model = OpenWakeWordModel(**model_kwargs)
+                            self._oww_framework = "tflite"
+                        except Exception:
+                            self._oww_model = OpenWakeWordModel(inference_framework="onnx", **model_kwargs)
+                            self._oww_framework = "onnx"
             except Exception as exc:  # pragma: no cover - environment-specific
                 self._oww_error = f"openwakeword model init failed: {exc}"
 
