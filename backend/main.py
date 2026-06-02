@@ -12,6 +12,7 @@ from curl_cffi.requests import AsyncSession as _CurlSession
 from skill_manager import SkillManager
 from offline_voice import OfflineVoiceEngine
 from tts_engine import LocalTTSEngine
+import os
 
 app = FastAPI(title="Alfred – Home Assistant API")
 
@@ -22,9 +23,62 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def _env_true(name: str) -> bool:
+    v = os.getenv(name, "").lower()
+    return v in ("1", "true", "yes", "on")
+
+# Feature flag: disable all voice components (wakeword, STT, TTS)
+NO_VOICE = _env_true("ALFRED_NO_VOICE")
+
 skill_manager = SkillManager()
-offline_voice_engine = OfflineVoiceEngine()
-tts_engine = LocalTTSEngine()
+if NO_VOICE:
+    class VoiceStub:
+        def __init__(self):
+            self.enabled = False
+            self.reason = "voice support disabled by ALFRED_NO_VOICE"
+            self.wakeword_name = os.getenv("ALFRED_WAKEWORD_NAME", "alfred")
+            self.wakeword_threshold = float(os.getenv("ALFRED_WAKEWORD_THRESHOLD", "0.45"))
+            self.command_timeout_s = float(os.getenv("ALFRED_COMMAND_TIMEOUT", "8"))
+            self._oww_framework = "none"
+            self._wakeword_mode = "disabled"
+
+        def status(self) -> dict[str, Any]:
+            return {
+                "enabled": self.enabled,
+                "reason": self.reason,
+                "vosk_model_path": "",
+                "wakeword_name": self.wakeword_name,
+                "wakeword_mode": self._wakeword_mode,
+                "wakeword_framework": self._oww_framework,
+                "wakeword_threshold": self.wakeword_threshold,
+                "command_timeout_s": self.command_timeout_s,
+            }
+
+        def new_session(self):
+            raise RuntimeError(self.reason)
+
+    class TTSStub:
+        def __init__(self):
+            self.enabled = False
+            self.reason = "tts disabled by ALFRED_NO_VOICE"
+
+        def status(self) -> dict[str, Any]:
+            return {"enabled": self.enabled, "reason": self.reason}
+
+        def list_voices(self) -> list[str]:
+            return []
+
+        def configure(self, voice_preference: str | None = None, voice_id: str | None = None):
+            raise ValueError("TTS disabled")
+
+        def synthesize(self, text: str, lang: str):
+            raise RuntimeError("TTS disabled")
+
+    offline_voice_engine = VoiceStub()
+    tts_engine = TTSStub()
+else:
+    offline_voice_engine = OfflineVoiceEngine()
+    tts_engine = LocalTTSEngine()
 
 
 class CommandRequest(BaseModel):
@@ -69,6 +123,9 @@ async def tts_voices():
 
 @app.post("/api/tts/config")
 async def tts_config(request: TTSConfigRequest):
+    if not tts_engine.enabled:
+        raise HTTPException(status_code=503, detail=tts_engine.reason)
+
     try:
         return tts_engine.configure(
             voice_preference=request.voice_preference,
