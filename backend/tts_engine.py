@@ -266,6 +266,7 @@ class PiperTTSEngine:
         self._voice_id_override = ""
         self._voice_name = os.getenv("ALFRED_TTS_MODEL", self._DEFAULT_VOICE).strip()
         self._voice_path_override = os.getenv("ALFRED_TTS_VOICE_PATH", "").strip()
+        print(f"Piper TTS voice: {self._voice_name}, path override: {self._voice_path_override}")
         self._piper_voice = None
 
         try:

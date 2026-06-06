@@ -327,4 +327,4 @@ if __name__ == "__main__":
         f"Voice support enabled={voice_status.get('enabled')} "
         f"reason={voice_status.get('reason', 'unknown')}"
     )
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)
