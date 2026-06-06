@@ -61,29 +61,36 @@ class OfflineVoiceEngine:
             try:
                 wake_model_path = os.getenv("ALFRED_WAKE_MODEL", "").strip()
                 model_kwargs = {}
+                
+                # 1. Configura solo il percorso del modello nel dizionario kwargs
                 if wake_model_path:
                     if not Path(wake_model_path).exists():
                         self._oww_error = f"wake model file missing: {wake_model_path}"
                     else:
                         model_kwargs["wakeword_models"] = [wake_model_path]
-
-                if not self._oww_error:
+                else:
+                    self._oww_error = "ALFRED_WAKE_MODEL environment variable is empty"
+        
+                # 2. Inizializza separando nettamente i kwargs dal framework di inferenza
+                if not getattr(self, "_oww_error", None):
                     if wake_model_path.lower().endswith(".onnx"):
-                        print("Using ONNX wake word model from ALFRED_WAKE_MODEL: %s", wake_model_path)
+                        print(f"Using ONNX wake word model: {wake_model_path}")
+                        # Passa 'inference_framework' come argomento distinto, NON dentro model_kwargs
                         self._oww_model = OpenWakeWordModel(inference_framework="onnx", **model_kwargs)
                         self._oww_framework = "onnx"
                     else:
                         try:
-                            print("Using TFLite wake word model from ALFRED_WAKE_MODEL: %s", wake_model_path)
-                            self._oww_model = OpenWakeWordModel(**model_kwargs)
+                            print(f"Using TFLite wake word model: {wake_model_path}")
+                            self._oww_model = OpenWakeWordModel(inference_framework="tflite", **model_kwargs)
                             self._oww_framework = "tflite"
-                        except Exception:
-                            print("Failed to load ALFRED_WAKE_MODEL as TFLite, trying ONNX: %s", wake_model_path)
+                        except Exception as ex:
+                            print(f"TFLite failed ({ex}), trying ONNX fallback...")
                             self._oww_model = OpenWakeWordModel(inference_framework="onnx", **model_kwargs)
-                            self._oww_framework = "onnx"
-            except Exception as exc:  # pragma: no cover - environment-specific
-                self._oww_error = f"openwakeword model init failed: {exc}"
-
+                            self._oww_framework = "onnx"                    
+            except Exception as e:
+                self._oww_error = f"openwakeword model init failed: {e}"
+                print(self._oww_error)
+           
         self.vosk_model_path = self._resolve_vosk_model_path()
         if not self.vosk_model_path or not Path(self.vosk_model_path).exists():
             default_hint = str(Path(__file__).parent / "models" / "vosk-model-small-en-us-0.15")
