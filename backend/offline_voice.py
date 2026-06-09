@@ -36,6 +36,13 @@ class OfflineVoiceEngine:
         self._wakeword_mode = "none"
         self._oww_error = ""
         OpenWakeWordModel = None
+
+        print(
+            f"[VOICE INIT] wakeword_name={self.wakeword_name} "
+            f"threshold={self.wakeword_threshold} "
+            f"command_timeout_s={self.command_timeout_s}",
+            flush=True,
+        )
         # Only support the upstream `openwakeword` package. No fallbacks.
         try:
             import openwakeword
@@ -60,36 +67,38 @@ class OfflineVoiceEngine:
         if OpenWakeWordModel is not None:
             try:
                 wake_model_path = os.getenv("ALFRED_WAKE_MODEL", "").strip()
+                if not wake_model_path:
+                    wake_model_path = self._resolve_wake_model_path()
+                    if wake_model_path:
+                        print(f"[VOICE INIT] fallback wake model found: {wake_model_path}", flush=True)
+
                 model_kwargs = {}
-                
-                # 1. Configura solo il percorso del modello nel dizionario kwargs
                 if wake_model_path:
                     if not Path(wake_model_path).exists():
                         self._oww_error = f"wake model file missing: {wake_model_path}"
                     else:
                         model_kwargs["wakeword_models"] = [wake_model_path]
                 else:
-                    self._oww_error = "ALFRED_WAKE_MODEL environment variable is empty"
-        
+                    self._oww_error = "ALFRED_WAKE_MODEL environment variable is empty and no default wake model found"
+
                 # 2. Inizializza separando nettamente i kwargs dal framework di inferenza
                 if not getattr(self, "_oww_error", None):
                     if wake_model_path.lower().endswith(".onnx"):
-                        print(f"Using ONNX wake word model: {wake_model_path}")
-                        # Passa 'inference_framework' come argomento distinto, NON dentro model_kwargs
+                        print(f"Using ONNX wake word model: {wake_model_path}", flush=True)
                         self._oww_model = OpenWakeWordModel(inference_framework="onnx", **model_kwargs)
                         self._oww_framework = "onnx"
                     else:
                         try:
-                            print(f"Using TFLite wake word model: {wake_model_path}")
+                            print(f"Using TFLite wake word model: {wake_model_path}", flush=True)
                             self._oww_model = OpenWakeWordModel(inference_framework="tflite", **model_kwargs)
                             self._oww_framework = "tflite"
                         except Exception as ex:
-                            print(f"TFLite failed ({ex}), trying ONNX fallback...")
+                            print(f"TFLite failed ({ex}), trying ONNX fallback...", flush=True)
                             self._oww_model = OpenWakeWordModel(inference_framework="onnx", **model_kwargs)
-                            self._oww_framework = "onnx"                    
+                            self._oww_framework = "onnx"
             except Exception as e:
                 self._oww_error = f"openwakeword model init failed: {e}"
-                print(self._oww_error)
+                print(self._oww_error, flush=True)
            
         self.vosk_model_path = self._resolve_vosk_model_path()
         if not self.vosk_model_path or not Path(self.vosk_model_path).exists():
@@ -127,6 +136,7 @@ class OfflineVoiceEngine:
             "wakeword_framework": self._oww_framework,
             "wakeword_threshold": self.wakeword_threshold,
             "command_timeout_s": self.command_timeout_s,
+            "wakeword_error": self._oww_error,
         }
 
     def _resolve_vosk_model_path(self) -> str:
@@ -142,6 +152,23 @@ class OfflineVoiceEngine:
             return str(candidates[0])
 
         return str(models_dir / "vosk-model-small-en-us-0.15")
+
+    def _resolve_wake_model_path(self) -> str:
+        models_dir = Path(__file__).parent / "models" / "wakewords"
+        if not models_dir.exists():
+            return ""
+
+        preferred = ["alfred.onnx", "alfred.tflite"]
+        for filename in preferred:
+            candidate = models_dir / filename
+            if candidate.exists():
+                return str(candidate)
+
+        for candidate in sorted(models_dir.glob("*.onnx")):
+            return str(candidate)
+        for candidate in sorted(models_dir.glob("*.tflite")):
+            return str(candidate)
+        return ""
 
     def new_session(self) -> "OfflineVoiceSession":
         if not self.enabled:
@@ -220,6 +247,7 @@ class OfflineVoiceSession:
     def _check_wakeword(self, pcm16: np.ndarray, pcm16_bytes: bytes) -> dict[str, Any] | None:
         # If openwakeword isn't available, don't attempt any fallback.
         if self.engine._oww_model is None:
+            print("[WAKE CHECK] openwakeword model unavailable", flush=True)
             return None
 
         # Buffer incoming audio and run the openwakeword model on fixed-size frames.
@@ -249,15 +277,32 @@ class OfflineVoiceSession:
         scores = self.engine._oww_model.predict(data)
 
         if isinstance(scores, dict):
+            labels = list(scores.keys())
             if self.engine.wakeword_name in scores:
-                return float(scores[self.engine.wakeword_name])
+                value = float(scores[self.engine.wakeword_name])
+                print(
+                    f"[WAKE SCORE] predicted {self.engine.wakeword_name}={value:.3f} "
+                    f"labels={labels}",
+                    flush=True,
+                )
+                return value
             if scores:
-                return float(max(scores.values()))
+                value = float(max(scores.values()))
+                print(
+                    f"[WAKE SCORE] wakeword name missing, selected max={value:.3f} "
+                    f"labels={labels}",
+                    flush=True,
+                )
+                return value
+            print("[WAKE SCORE] empty score dictionary", flush=True)
             return 0.0
 
         try:
-            return float(scores)
-        except Exception:
+            value = float(scores)
+            print(f"[WAKE SCORE] model returned float score={value:.3f}", flush=True)
+            return value
+        except Exception as exc:
+            print(f"[WAKE SCORE] failed to parse score: {exc}", flush=True)
             return 0.0
 
     def _decode_command(self, pcm16_bytes: bytes) -> list[dict[str, Any]]:

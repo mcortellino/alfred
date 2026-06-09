@@ -636,9 +636,12 @@ const alfred = {
                 : channel.url;
             this._setContent(`
         <div class="tv-shell tv-shell-full">
-          <div class="tv-player">
+          <div class="tv-player" style="position:relative">
             <video id="hls-video" controls autoplay playsinline
               style="width:100%;height:100%;background:#000;display:block;"></video>
+            <div id="tv-res-controls" style="position:absolute;top:12px;right:12px;z-index:20;">
+              <select id="tv-res-select" aria-label="Resolution" style="background:rgba(0,0,0,0.6);color:#fff;border:1px solid rgba(255,255,255,0.08);padding:6px;border-radius:6px;"></select>
+            </div>
           </div>
         </div>`, "tv");
             const video = document.getElementById("hls-video");
@@ -646,6 +649,49 @@ const alfred = {
                 const hls = new Hls({ enableWorker: true });
                 hls.loadSource(videoUrl);
                 hls.attachMedia(video);
+                // Populate resolution selector when manifest parsed
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    try {
+                        const sel = document.getElementById('tv-res-select');
+                        if (!sel)
+                            return;
+                        // Clear and add Auto
+                        sel.innerHTML = '';
+                        const autoOpt = document.createElement('option');
+                        autoOpt.value = 'auto';
+                        autoOpt.text = 'Auto';
+                        sel.appendChild(autoOpt);
+                        hls.levels.forEach((lvl, idx) => {
+                            const height = lvl.height || 0;
+                            const bitrateK = Math.round((lvl.bitrate || 0) / 1000);
+                            const title = (lvl.name || "").trim();
+                            let label = height
+                                ? `${idx + 1}: ${height}p ${bitrateK}kbps`
+                                : `${idx + 1}: ${bitrateK}kbps`;
+                            if (title) {
+                                label = `${idx + 1}: ${title} ${bitrateK}kbps`;
+                            }
+                            const opt = document.createElement('option');
+                            opt.value = String(idx);
+                            opt.text = label;
+                            sel.appendChild(opt);
+                        });
+                        sel.value = 'auto';
+                        sel.addEventListener('change', (e) => {
+                            const v = e.target.value;
+                            if (v === 'auto') {
+                                hls.currentLevel = -1; // auto
+                            }
+                            else {
+                                const levelIdx = parseInt(v, 10);
+                                if (!Number.isNaN(levelIdx))
+                                    hls.currentLevel = levelIdx;
+                            }
+                        });
+                    }
+                    catch (err) { /* ignore */ }
+                });
+
                 hls.on(Hls.Events.ERROR, (_e, data) => {
                     if (data.fatal) {
                         video.insertAdjacentHTML("afterend", `<p style="color:var(--c-error);padding:8px;font-size:.85rem">
@@ -674,15 +720,56 @@ const alfred = {
             const videoUrl = channel.url;
             this._setContent(`
         <div class="tv-shell tv-shell-full">
-          <div class="tv-player">
+          <div class="tv-player" style="position:relative">
             <video id="hls-video" controls autoplay playsinline
               style="width:100%;height:100%;background:#000;display:block;"></video>
+            <div id="tv-res-controls" style="position:absolute;top:12px;right:12px;z-index:20;">
+              <select id="tv-res-select" aria-label="Resolution" style="background:rgba(0,0,0,0.6);color:#fff;border:1px solid rgba(255,255,255,0.08);padding:6px;border-radius:6px;"></select>
+            </div>
           </div>
         </div>`, "tv");
             const video = document.getElementById("hls-video");
             if (typeof dashjs !== "undefined" && dashjs.MediaPlayer) {
                 const player = dashjs.MediaPlayer().create();
                 player.initialize(video, videoUrl, true);
+                // Populate resolution selector for DASH
+                try {
+                    const sel = document.getElementById('tv-res-select');
+                    if (sel) {
+                        sel.innerHTML = '';
+                        const autoOpt = document.createElement('option');
+                        autoOpt.value = 'auto';
+                        autoOpt.text = 'Auto';
+                        sel.appendChild(autoOpt);
+                        const infos = player.getBitrateInfoListFor('video') || [];
+                        infos.forEach((info, idx) => {
+                            const label = info.height ? `${info.height}p` : `${Math.round((info.bitrate||0)/1000)}kbps`;
+                            const opt = document.createElement('option');
+                            opt.value = String(idx);
+                            opt.text = label;
+                            sel.appendChild(opt);
+                        });
+                        sel.value = 'auto';
+                        sel.addEventListener('change', (e) => {
+                            const v = e.target.value;
+                            try {
+                                if (v === 'auto') {
+                                    player.setAutoSwitchQualityFor('video', true);
+                                }
+                                else {
+                                    const idx = parseInt(v, 10);
+                                    if (!Number.isNaN(idx)) {
+                                        player.setAutoSwitchQualityFor('video', false);
+                                        player.setQualityFor('video', idx);
+                                    }
+                                }
+                            }
+                            catch (_err) { }
+                        });
+                    }
+                }
+                catch (_e) { }
+
                 player.on(dashjs.MediaPlayer.events.ERROR, () => {
                     video.insertAdjacentHTML("afterend", `<p style="color:var(--c-error);padding:8px;font-size:.85rem">
               Stream DASH non disponibile.</p>`);

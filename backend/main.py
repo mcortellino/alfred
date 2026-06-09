@@ -262,6 +262,12 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.websocket("/ws/voice")
 async def voice_websocket(websocket: WebSocket):
     await websocket.accept()
+    print(
+        f"[VOICE WS] connection accepted enabled={offline_voice_engine.enabled} "
+        f"wakeword={offline_voice_engine.wakeword_name} mode={offline_voice_engine._wakeword_mode} "
+        f"reason={offline_voice_engine.reason}",
+        flush=True,
+    )
 
     if not offline_voice_engine.enabled:
         await websocket.send_json({
@@ -284,6 +290,7 @@ async def voice_websocket(websocket: WebSocket):
 
             if message.get("text") is not None:
                 text = message["text"]
+                print(f"[VOICE WS] received control text={text}", flush=True)
                 try:
                     payload = json.loads(text)
                 except json.JSONDecodeError:
@@ -292,19 +299,25 @@ async def voice_websocket(websocket: WebSocket):
                 action = payload.get("action")
                 if action == "configure":
                     event = session.configure(sample_rate=payload.get("sample_rate"))
+                    print(f"[VOICE WS] configured sample_rate={payload.get('sample_rate')} -> {event}", flush=True)
                     await websocket.send_json(event)
                 elif action == "listen_once":
-                    await websocket.send_json(session.force_listen())
+                    event = session.force_listen()
+                    print(f"[VOICE WS] forced listen_once -> {event}", flush=True)
+                    await websocket.send_json(event)
                 elif action == "ping":
+                    print("[VOICE WS] ping received", flush=True)
                     await websocket.send_json({"type": "pong"})
                 continue
 
             if message.get("bytes") is not None:
                 events = session.process_audio(message["bytes"])
                 for event in events:
+                    print(f"[VOICE WS] sending event: {event}", flush=True)
                     await websocket.send_json(event)
 
     except WebSocketDisconnect:
+        print("[VOICE WS] disconnected", flush=True)
         return
 
 
