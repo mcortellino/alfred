@@ -274,32 +274,38 @@ class OfflineVoiceSession:
 
     def _wake_score(self, frame: np.ndarray) -> float:
         data = frame.astype(np.float32) / 32768.0
-        scores = self.engine._oww_model.predict(data)
+        scores = self.engine._oww_model.predict(
+            data,
+            threshold={self.engine.wakeword_name: self.engine.wakeword_threshold},
+            debounce_time=0.25,
+        )
 
         if isinstance(scores, dict):
             labels = list(scores.keys())
             if self.engine.wakeword_name in scores:
                 value = float(scores[self.engine.wakeword_name])
-                print(
-                    f"[WAKE SCORE] predicted {self.engine.wakeword_name}={value:.3f} "
-                    f"labels={labels}",
-                    flush=True,
-                )
+                if value > 0.0:
+                    print(
+                        f"[WAKE SCORE] detected {self.engine.wakeword_name}={value:.3f} "
+                        f"labels={labels}",
+                        flush=True,
+                    )
                 return value
             if scores:
                 value = float(max(scores.values()))
-                print(
-                    f"[WAKE SCORE] wakeword name missing, selected max={value:.3f} "
-                    f"labels={labels}",
-                    flush=True,
-                )
+                if value > 0.0:
+                    print(
+                        f"[WAKE SCORE] detected fallback max={value:.3f} "
+                        f"labels={labels}",
+                        flush=True,
+                    )
                 return value
-            print("[WAKE SCORE] empty score dictionary", flush=True)
             return 0.0
 
         try:
             value = float(scores)
-            print(f"[WAKE SCORE] model returned float score={value:.3f}", flush=True)
+            if value > 0.0:
+                print(f"[WAKE SCORE] model returned float score={value:.3f}", flush=True)
             return value
         except Exception as exc:
             print(f"[WAKE SCORE] failed to parse score: {exc}", flush=True)
