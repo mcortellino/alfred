@@ -77,7 +77,7 @@ class CalendarSkill(BaseSkill):
             return {
                 "action": "calendar_open",
                 "message": (
-                    "Dimmi il titolo e la data in formato YYYY-MM-DD, per esempio 'aggiungi evento riunione il 2026-05-30 alle 14:00'."
+                    "Dimmi il titolo e la data per esempio 'aggiungi evento riunione il 2026-05-30 alle 14:00'."
                     if it else
                     "Tell me the title and date in YYYY-MM-DD format, for example 'add event meeting on 2026-05-30 at 14:00'."
                 ),

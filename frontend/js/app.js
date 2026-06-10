@@ -655,7 +655,6 @@ const alfred = {
                         const sel = document.getElementById('tv-res-select');
                         if (!sel)
                             return;
-                        // Clear and add Auto
                         sel.innerHTML = '';
                         const autoOpt = document.createElement('option');
                         autoOpt.value = 'auto';
@@ -664,7 +663,7 @@ const alfred = {
                         hls.levels.forEach((lvl, idx) => {
                             const height = lvl.height || 0;
                             const bitrateK = Math.round((lvl.bitrate || 0) / 1000);
-                            const title = (lvl.name || "").trim();
+                            const title = (lvl.name || '').trim();
                             let label = height
                                 ? `${idx + 1}: ${height}p ${bitrateK}kbps`
                                 : `${idx + 1}: ${bitrateK}kbps`;
@@ -680,7 +679,7 @@ const alfred = {
                         sel.addEventListener('change', (e) => {
                             const v = e.target.value;
                             if (v === 'auto') {
-                                hls.currentLevel = -1; // auto
+                                hls.currentLevel = -1;
                             }
                             else {
                                 const levelIdx = parseInt(v, 10);
@@ -689,9 +688,8 @@ const alfred = {
                             }
                         });
                     }
-                    catch (err) { /* ignore */ }
+                    catch (err) { }
                 });
-
                 hls.on(Hls.Events.ERROR, (_e, data) => {
                     if (data.fatal) {
                         video.insertAdjacentHTML("afterend", `<p style="color:var(--c-error);padding:8px;font-size:.85rem">
@@ -732,7 +730,6 @@ const alfred = {
             if (typeof dashjs !== "undefined" && dashjs.MediaPlayer) {
                 const player = dashjs.MediaPlayer().create();
                 player.initialize(video, videoUrl, true);
-                // Populate resolution selector for DASH
                 try {
                     const sel = document.getElementById('tv-res-select');
                     if (sel) {
@@ -743,7 +740,11 @@ const alfred = {
                         sel.appendChild(autoOpt);
                         const infos = player.getBitrateInfoListFor('video') || [];
                         infos.forEach((info, idx) => {
-                            const label = info.height ? `${info.height}p` : `${Math.round((info.bitrate||0)/1000)}kbps`;
+                            const height = info.height || 0;
+                            const bitrateK = Math.round((info.bitrate || 0) / 1000);
+                            const label = height
+                                ? `${idx + 1}: ${height}p ${bitrateK}kbps`
+                                : `${idx + 1}: ${bitrateK}kbps`;
                             const opt = document.createElement('option');
                             opt.value = String(idx);
                             opt.text = label;
@@ -757,10 +758,10 @@ const alfred = {
                                     player.setAutoSwitchQualityFor('video', true);
                                 }
                                 else {
-                                    const idx = parseInt(v, 10);
-                                    if (!Number.isNaN(idx)) {
+                                    const qualityIdx = parseInt(v, 10);
+                                    if (!Number.isNaN(qualityIdx)) {
                                         player.setAutoSwitchQualityFor('video', false);
-                                        player.setQualityFor('video', idx);
+                                        player.setQualityFor('video', qualityIdx);
                                     }
                                 }
                             }
@@ -769,7 +770,6 @@ const alfred = {
                     }
                 }
                 catch (_e) { }
-
                 player.on(dashjs.MediaPlayer.events.ERROR, () => {
                     video.insertAdjacentHTML("afterend", `<p style="color:var(--c-error);padding:8px;font-size:.85rem">
               Stream DASH non disponibile.</p>`);

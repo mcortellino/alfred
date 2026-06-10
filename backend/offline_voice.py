@@ -260,6 +260,7 @@ class OfflineVoiceSession:
 
             score = self._wake_score(frame)
             if score >= self.engine.wakeword_threshold:
+                print(f"[WAKE DETECTED] score={score:.3f} >= threshold={self.engine.wakeword_threshold}", flush=True)
                 self._listening_for_command = True
                 self._command_deadline = time.monotonic() + self.engine.command_timeout_s
                 self._recognizer = self._new_recognizer()
@@ -284,21 +285,11 @@ class OfflineVoiceSession:
             labels = list(scores.keys())
             if self.engine.wakeword_name in scores:
                 value = float(scores[self.engine.wakeword_name])
-                if value > 0.0:
-                    print(
-                        f"[WAKE SCORE] detected {self.engine.wakeword_name}={value:.3f} "
-                        f"labels={labels}",
-                        flush=True,
-                    )
+               
                 return value
             if scores:
                 value = float(max(scores.values()))
-                if value > 0.0:
-                    print(
-                        f"[WAKE SCORE] detected fallback max={value:.3f} "
-                        f"labels={labels}",
-                        flush=True,
-                    )
+               
                 return value
             return 0.0
 

@@ -25,7 +25,7 @@ class ShoppingSkill(BaseSkill):
             "to the list", "to my list", "from the list", "from my list", "shopping list",
             # Italian
             "spesa", "lista della spesa",
-            "alla lista", "dalla lista", "alla mia lista", "dalla mia lista",
+            "alla lista", "dalla lista", "alla mia lista", "dalla mia lista", "alla spesa",
             "aggiungi", "rimuovi", "togli", "elimina",
         ]
 
@@ -53,7 +53,7 @@ class ShoppingSkill(BaseSkill):
                     "to the shopping list", "to my shopping list",
                     "to the list", "to my list", "to shopping",
                     "alla lista della spesa", "alla mia lista della spesa",
-                    "alla lista", "alla mia lista",
+                    "alla lista", "alla mia lista", "alla spesa"
                 ):
                     after = after.replace(filler, "")
                 item = after.strip().strip(",").title()
