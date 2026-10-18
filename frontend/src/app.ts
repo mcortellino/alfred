@@ -187,20 +187,17 @@ const alfred = {
     if (ttsSummary) ttsSummary.textContent = "TTS: checking...";
 
     try {
-      const [statusRes, voicesRes] = await Promise.all([
-        fetch(`${API}/api/tts/status`, { cache: "no-store" }),
-        fetch(`${API}/api/tts/voices`, { cache: "no-store" }),
-      ]);
-
-      if (!statusRes.ok) throw new Error(`TTS status HTTP ${statusRes.status}`);
-      const status = await statusRes.json();
-
+      const status = await this.speech.getTtsStatus(true);
       let voiceCount = 0;
-      if (voicesRes.ok) {
-        const payload = await voicesRes.json();
-        voiceCount = Array.isArray(payload.voices) ? payload.voices.length : 0;
+      if (status.enabled) {
+        const voicesRes = await fetch(`${API}/api/tts/voices`, { cache: "no-store" });
+        if (voicesRes.ok) {
+          const payload = await voicesRes.json();
+          voiceCount = Array.isArray(payload.voices) ? payload.voices.length : 0;
+        }
       }
 
+      if (prefSel) prefSel.disabled = !status.enabled;
       if (prefSel && status.voice_preference) prefSel.value = status.voice_preference;
 
       const selected = status.selected_voice?.name || status.selected_voice?.id || "none";
@@ -222,6 +219,9 @@ const alfred = {
     const pref = prefSel ? prefSel.value : "female";
 
     try {
+      const status = await this.speech.getTtsStatus();
+      if (!status.enabled) return;
+
       const res = await fetch(`${API}/api/tts/config`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

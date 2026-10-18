@@ -19,6 +19,7 @@ class AlfredSpeech {
     this._ttsAudio = new Audio();
     this._ttsAbortController = null;
     this._ttsObjectUrl = null;
+    this._ttsStatusPromise = null;
     this._active = false;
     this._useFallback = false;
 
@@ -43,6 +44,23 @@ class AlfredSpeech {
   setLanguage(bcp47) {
     this.recognitionLang = bcp47;
     this._fallback.setLanguage(bcp47);
+  }
+
+  getTtsStatus(refresh = false) {
+    if (refresh || !this._ttsStatusPromise) {
+      let statusPromise;
+      statusPromise = fetch("/api/tts/status", { cache: "no-store" })
+        .then((res) => {
+          if (!res.ok) throw new Error(`TTS status HTTP ${res.status}`);
+          return res.json();
+        })
+        .catch((err) => {
+          if (this._ttsStatusPromise === statusPromise) this._ttsStatusPromise = null;
+          throw err;
+        });
+      this._ttsStatusPromise = statusPromise;
+    }
+    return this._ttsStatusPromise;
   }
 
   async start() {
@@ -80,13 +98,29 @@ class AlfredSpeech {
     this._emitDiag("manual.listen", "Manual listen via browser fallback");
   }
 
-  speak(text, onStart, onEnd) {
+  async speak(text, onStart, onEnd) {
     this.cancelSpeech();
 
-    const lang = this.recognitionLang.startsWith("it") ? "it" : "en";
     const controller = new AbortController();
     this._ttsAbortController = controller;
 
+    try {
+      const status = await this.getTtsStatus();
+      if (controller.signal.aborted) return;
+      if (!status.enabled) {
+        this._ttsAbortController = null;
+        if (onEnd) onEnd();
+        return;
+      }
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      this._ttsAbortController = null;
+      this._emitDiag("tts.error", `TTS status request failed: ${err?.message || err}`);
+      if (onEnd) onEnd();
+      return;
+    }
+
+    const lang = this.recognitionLang.startsWith("it") ? "it" : "en";
     fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
