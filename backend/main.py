@@ -15,11 +15,6 @@ from offline_voice import OfflineVoiceEngine
 from tts_engine import create_tts_engine
 import os
 
-try:
-    import sounddevice as sd
-except ImportError:  # pragma: no cover - environment-specific
-    sd = None
-
 app = FastAPI(title="Alfred – Home Assistant API")
 
 app.add_middleware(
@@ -176,11 +171,70 @@ _HLS_ALLOWED_DOMAINS = {
     "akamaized.net",     # Mediaset / other Akamai HLS CDN
 }
 
+_IFRAME_ALLOWED_HOSTS = {
+    "nove.tv",
+    "www.nove.tv",
+}
+_IFRAME_ALLOWED_DOMAINS = {
+    "discoveryplus.com",
+}
+
+
+def _host_permitted(hostname: str, allowed_hosts: set[str], allowed_domains: set[str]) -> bool:
+    if hostname in allowed_hosts:
+        return True
+    return any(hostname == d or hostname.endswith("." + d) for d in allowed_domains)
+
 
 def _hls_host_permitted(hostname: str) -> bool:
-    if hostname in _HLS_ALLOWED_HOSTS:
-        return True
-    return any(hostname == d or hostname.endswith("." + d) for d in _HLS_ALLOWED_DOMAINS)
+    return _host_permitted(hostname, _HLS_ALLOWED_HOSTS, _HLS_ALLOWED_DOMAINS)
+
+
+def _iframe_host_permitted(hostname: str) -> bool:
+    return _host_permitted(hostname, _IFRAME_ALLOWED_HOSTS, _IFRAME_ALLOWED_DOMAINS)
+
+
+@app.get("/api/frame-proxy")
+async def frame_proxy(url: str):
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="Unsupported scheme")
+    if not _iframe_host_permitted(parsed.hostname or ""):
+        raise HTTPException(status_code=403, detail="Host not permitted.")
+
+    req_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": url,
+    }
+
+    try:
+        async with _CurlSession(impersonate="chrome120") as session:
+            resp = await session.get(url, headers=req_headers, allow_redirects=True, timeout=10)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code, detail=f"Upstream returned {resp.status_code}")
+
+    content_type = resp.headers.get("content-type", "")
+    body = resp.text
+
+    # Strip framing and content-security restrictions.
+    body = re.sub(r'<meta[^>]+http-equiv=["\']Content-Security-Policy["\'][^>]*>', "", body, flags=re.IGNORECASE)
+    body = re.sub(r'<meta[^>]+http-equiv=["\']X-Frame-Options["\'][^>]*>', "", body, flags=re.IGNORECASE)
+
+    # Add a base tag so relative URLs resolve through the proxied origin.
+    if "<head" in body.lower():
+        if "<base" not in body.lower():
+            body = re.sub(r'(<head[^>]*>)', r'\1<base href="' + str(resp.url).rsplit("/", 1)[0] + '/" />', body, count=1, flags=re.IGNORECASE)
+
+    return Response(
+        content=body,
+        media_type=content_type.split(";")[0] if content_type else "text/html",
+        headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/api/hls-proxy")
@@ -264,105 +318,6 @@ async def websocket_endpoint(websocket: WebSocket):
         pass
 
 
-class BackendAudioCapture:
-    def __init__(self, session, websocket, sample_rate=16000, device=None, channels=1, blocksize=2048):
-        self.session = session
-        self.websocket = websocket
-        self.sample_rate = int(sample_rate)
-        self.device = device
-        self.channels = channels
-        self.blocksize = blocksize
-        self.loop = asyncio.get_running_loop()
-        self._queue: asyncio.Queue[bytes | None] = asyncio.Queue()
-        self._stream = None
-        self._task = None
-        self._running = False
-
-    def _resolve_device(self):
-        if self.device is None:
-            return None
-        if isinstance(self.device, int):
-            return self.device
-        try:
-            index = int(str(self.device))
-            return index
-        except ValueError:
-            name = str(self.device).lower()
-            for idx, info in enumerate(sd.query_devices()):
-                if info.get("max_input_channels", 0) > 0 and name in info.get("name", "").lower():
-                    print (f"[VOICE CAPTURE] resolved audio device '{self.device}' to index {idx} ({info.get('name')})", flush=True)
-                    return idx
-        raise RuntimeError(f"Audio device not found: {self.device}")
-
-    def _audio_callback(self, indata, frames, time, status):
-        if status:
-            print(f"[VOICE CAPTURE] status={status}", flush=True)
-        if not self._running:
-            return
-        data = bytes(indata)
-        self.loop.call_soon_threadsafe(self._queue.put_nowait, data)
-
-    async def start(self):
-        if sd is None:
-            raise RuntimeError("sounddevice package is required for backend audio capture")
-
-        device = self._resolve_device()
-        if device is not None:
-            info = sd.query_devices(device, "input")
-        else:
-            info = sd.query_devices(None, "input")
-
-        self.sample_rate = int(info.get("default_samplerate", self.sample_rate))
-        self.session.configure(sample_rate=self.sample_rate)
-
-        try:
-            self._stream = sd.RawInputStream(
-                samplerate=self.sample_rate,
-                device=device,
-                channels=self.channels,
-                dtype="int16",
-                blocksize=self.blocksize,
-                callback=self._audio_callback,
-            )
-            self._stream.start()
-        except Exception as exc:
-            raise RuntimeError(f"Unable to open audio input device: {exc}") from exc
-
-        self._running = True
-        self._task = asyncio.create_task(self._process_audio_loop())
-
-    async def stop(self):
-        self._running = False
-        if self._stream is not None:
-            try:
-                self._stream.stop()
-            except Exception:
-                pass
-            try:
-                self._stream.close()
-            except Exception:
-                pass
-            self._stream = None
-
-        await self._queue.put(None)
-        if self._task is not None:
-            await self._task
-            self._task = None
-
-    async def _process_audio_loop(self):
-        while True:
-            payload = await self._queue.get()
-            if payload is None:
-                break
-            try:
-                events = self.session.process_audio(payload)
-                for event in events:
-                    await self.websocket.send_json(event)
-            except Exception as exc:
-                print(f"[VOICE CAPTURE] event send failed: {exc}", flush=True)
-                break
-
-
 @app.websocket("/ws/voice")
 async def voice_websocket(websocket: WebSocket):
     await websocket.accept()
@@ -382,55 +337,47 @@ async def voice_websocket(websocket: WebSocket):
         return
 
     session = offline_voice_engine.new_session()
-    capture = BackendAudioCapture(
-        session,
-        websocket,
-        sample_rate=16000,
-        device=os.getenv("ALFRED_AUDIO_DEVICE", None),
-    )
-
-    try:
-        await capture.start()
-    except Exception as exc:
-        await websocket.send_json({
-            "type": "error",
-            "message": str(exc),
-        })
-        await websocket.close(code=1011)
-        return
-
     await websocket.send_json({
         "type": "ready",
         "engine": "openwakeword+vosk",
         "wakeword": offline_voice_engine.wakeword_name,
-        "sample_rate": capture.sample_rate,
     })
 
     try:
         while True:
-            text = await websocket.receive_text()
-            print(f"[VOICE WS] received control text={text}", flush=True)
-            try:
-                payload = json.loads(text)
-            except json.JSONDecodeError:
-                payload = {}
+            message = await websocket.receive()
 
-            action = payload.get("action")
-            if action == "configure":
-                event = session.configure(sample_rate=payload.get("sample_rate"))
-                print(f"[VOICE WS] configured sample_rate={payload.get('sample_rate')} -> {event}", flush=True)
-                await websocket.send_json(event)
-            elif action == "listen_once":
-                event = session.force_listen()
-                print(f"[VOICE WS] forced listen_once -> {event}", flush=True)
-                await websocket.send_json(event)
-            elif action == "ping":
-                print("[VOICE WS] ping received", flush=True)
-                await websocket.send_json({"type": "pong"})
+            if message.get("text") is not None:
+                text = message["text"]
+                print(f"[VOICE WS] received control text={text}", flush=True)
+                try:
+                    payload = json.loads(text)
+                except json.JSONDecodeError:
+                    payload = {}
+
+                action = payload.get("action")
+                if action == "configure":
+                    event = session.configure(sample_rate=payload.get("sample_rate"))
+                    print(f"[VOICE WS] configured sample_rate={payload.get('sample_rate')} -> {event}", flush=True)
+                    await websocket.send_json(event)
+                elif action == "listen_once":
+                    event = session.force_listen()
+                    print(f"[VOICE WS] forced listen_once -> {event}", flush=True)
+                    await websocket.send_json(event)
+                elif action == "ping":
+                    print("[VOICE WS] ping received", flush=True)
+                    await websocket.send_json({"type": "pong"})
+                continue
+
+            if message.get("bytes") is not None:
+                events = session.process_audio(message["bytes"])
+                for event in events:
+                    print(f"[VOICE WS] sending event: {event}", flush=True)
+                    await websocket.send_json(event)
+
     except WebSocketDisconnect:
         print("[VOICE WS] disconnected", flush=True)
-    finally:
-        await capture.stop()
+        return
 
 
 # Serve the frontend at root

@@ -903,7 +903,178 @@ body {
   height: 100%;
   min-height: 0;
 }
-
+.youtube-search-panel .search-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 46px;
+  gap: 8px;
+  align-content: start;
+  margin-bottom: 12px;
+}
+.youtube-search-panel .search-input {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid rgba(145, 178, 220, 0.15);
+  background: rgba(8, 14, 23, 0.92);
+  color: var(--text);
+  padding: 0 14px;
+  font-size: 1.1rem;
+}
+.youtube-search-panel .search-input:focus {
+  outline: none;
+  border-color: rgba(173, 216, 230, 0.7);
+}
+.youtube-search-panel .youtube-recent-searches {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 0;
+  display: grid;
+  gap: 5px;
+}
+.youtube-recent-search-title {
+  color: var(--text-dim);
+  font-size: 0.76rem;
+}
+.youtube-recent-search-list {
+  display: grid;
+  gap: 4px;
+  max-height: 104px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 3px;
+}
+.youtube-search-panel .panel-btn-icon {
+  min-width: 46px;
+}
+.youtube-search-submit {
+  width: 46px;
+  height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+.youtube-search-submit svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.youtube-recent-search-item {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  overflow: hidden;
+  border: 1px solid rgba(145, 178, 220, 0.1);
+  border-radius: 6px;
+  background: rgba(8, 14, 23, 0.72);
+  color: var(--text-dim);
+  padding: 8px 10px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.youtube-recent-search-item:hover,
+.youtube-recent-search-item:focus-visible {
+  border-color: var(--accent-2);
+  color: var(--text);
+  outline: none;
+}
+.youtube-player-layout {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 14px;
+  padding: 14px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.youtube-player-main {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  position: relative;
+  overflow: hidden;
+  container-type: size;
+}
+#main-canvas[data-view="tv"] .youtube-player-main .tv-shell-full {
+  width: min(100cqw, 177.78cqh);
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+#main-canvas[data-view="tv"] .youtube-player-main .tv-shell-full .tv-player {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+#main-canvas[data-view="tv"] .youtube-player-main .tv-shell-full .tv-player iframe {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+}
+.youtube-search-side {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 16px;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+}
+.youtube-search-panel-compact {
+  height: 100%;
+  min-height: 0;
+}
+.youtube-search-panel-compact .channel-list-vertical {
+  min-height: 0;
+}
+.channel-row-main.youtube-search-row {
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 10px;
+}
+.channel-row-text.youtube-search-text {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+.youtube-search-text .channel-row-name {
+  min-width: 0;
+  white-space: normal;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.youtube-search-text .channel-row-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.related-videos-panel {
+  margin-top: 0;
+}
+.related-videos-panel .panel-title {
+  margin-bottom: 12px;
+}
 .station-card,
 .channel-card {
   min-height: 74px;
@@ -946,6 +1117,13 @@ body {
   object-fit: contain;
   background: rgba(10, 16, 26, 0.8);
   display: block;
+}
+
+.channel-row-logo.youtube-search-thumbnail {
+  width: 88px;
+  height: 50px;
+  border-radius: 6px;
+  object-fit: cover;
 }
 
 .channel-row-text {
@@ -1266,6 +1444,18 @@ body {
     min-width: 62px;
     width: 62px;
     margin-left: 0;
+  }
+
+  .youtube-player-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(150px, 30vh);
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .youtube-search-side {
+    height: auto;
+    max-height: none;
   }
 }
 

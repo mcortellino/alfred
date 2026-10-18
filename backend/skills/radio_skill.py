@@ -228,6 +228,12 @@ class RadioSkill(BaseSkill):
     def triggers(self) -> List[str]:
         return ["radio", "music", "station", "musica", "stazione"]
 
+    def matches(self, command: str) -> bool:
+        cmd = (command or "").lower()
+        if re.search(r"\b(youtube|youtu\.be)\b", cmd) or re.search(r"\byt\b", cmd):
+            return False
+        return super().matches(command)
+
     @staticmethod
     def _normalize(cmd: str) -> str:
         text = (cmd or "").lower().strip()

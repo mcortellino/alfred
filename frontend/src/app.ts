@@ -28,6 +28,7 @@ const alfred = {
   _activeRadioStation: null,
   _activeTvChannel: null,
   _activeStreamSkill: null,
+  _youtubeSearchState: null,
   _calendarState: null,
   _mediaDucked: false,
   _duckedLevels: null,
@@ -418,6 +419,9 @@ const alfred = {
     document.getElementById("btn-radio").addEventListener("click", () =>
       this._restoreHomeSkillView("radio") || this._reopenActiveRadio() || this.processCommand("play radio")
     );
+    document.getElementById("btn-youtube").addEventListener("click", () =>
+      this.processCommand("search youtube")
+    );
     document.getElementById("btn-tv").addEventListener("click", () =>
       this._restoreHomeSkillView("tv") || this._reopenActiveTv() || this.processCommand("show tv")
     );
@@ -557,6 +561,7 @@ const alfred = {
         this._hideContent();
         break;
       case "tv_list":          this._showChannelPicker(data);       break;
+      case "youtube_search":   this._showYouTubeSearch(data);       break;
       case "shopping_list":
       case "shopping_updated": this._showShopping(data);            break;
       case "calendar_open":
@@ -632,14 +637,165 @@ const alfred = {
       </div>`, "radio");
   },
 
-  // ── TV ───────────────────────────────────────────────────────────
+  _showYouTubeSearch(data) {
+    this._youtubeSearchState = data ? { query: data.query || "", results: Array.isArray(data.results) ? data.results : [] } : { query: "", results: [] };
+    this._rememberYouTubeSearch(this._youtubeSearchState.query);
+    this._setContent(this._renderYouTubeSearchPanel(this._youtubeSearchState), "content");
+    this._wireYouTubeSearchPanel();
+  },
+
+  _getRecentYouTubeSearches() {
+    try {
+      const searches = JSON.parse(localStorage.getItem("alfred.youtube.recentSearches") || "[]");
+      return Array.isArray(searches)
+        ? searches.filter((search) => typeof search === "string" && search.trim()).slice(0, 8)
+        : [];
+    } catch (_error) {
+      return [];
+    }
+  },
+
+  _rememberYouTubeSearch(query) {
+    const search = (query || "").trim();
+    if (!search) return;
+    const searches = this._getRecentYouTubeSearches()
+      .filter((item) => item.toLocaleLowerCase() !== search.toLocaleLowerCase());
+    try {
+      localStorage.setItem("alfred.youtube.recentSearches", JSON.stringify([search, ...searches].slice(0, 8)));
+    } catch (_error) { }
+  },
+
+  _renderYouTubeSearchPanel(data, compact = false) {
+    const it = this._isItalian();
+    const query = data?.query || "";
+    const placeholder = it ? "Cerca un video su YouTube..." : "Search YouTube videos...";
+    const title = it ? "RICERCA YOUTUBE" : "YOUTUBE SEARCH";
+    const searchLabel = it ? "Cerca" : "Search";
+    const recentLabel = it ? "Ricerche recenti" : "Recent searches";
+    const recentSearches = this._getRecentYouTubeSearches();
+    const recentSearchList = recentSearches.length
+      ? `<div class="youtube-recent-searches" role="group" aria-label="${recentLabel}">
+          <div class="youtube-recent-search-title">${recentLabel}</div>
+          <div class="youtube-recent-search-list">
+            ${recentSearches.map(search => `<button class="youtube-recent-search-item" type="button" data-query="${this._esc(search)}">${this._esc(search)}</button>`).join("")}
+          </div>
+        </div>`
+      : "";
+    const results = Array.isArray(data?.results) ? data.results : [];
+    const rows = results.length
+      ? results.map(item => `
+      <button class="station-card channel-card channel-row youtube-search-item"
+        data-video-id="${this._esc(item.id)}"
+        data-video-name="${this._esc(item.name)}"
+        data-video-thumbnail="${this._esc(item.thumbnail || "")}">
+        <div class="channel-row-main youtube-search-row">
+          ${item.thumbnail ? `<img class="channel-row-logo youtube-search-thumbnail" src="${this._esc(item.thumbnail)}" alt="${this._esc(item.name)} thumbnail" loading="lazy" referrerpolicy="no-referrer"/>` : `<span class="channel-row-icon" aria-hidden="true">&#x25B6;</span>`}
+          <div class="channel-row-text youtube-search-text">
+            <strong class="channel-row-name">${this._esc(item.name)}</strong>
+            <span class="channel-row-meta">${this._esc(item.uploader || "")}${item.duration ? ` • ${this._esc(this._formatVideoDuration(item.duration))}` : ""}</span>
+          </div>
+        </div>
+      </button>`).join("")
+      : `<p class="empty-msg">${it ? "Nessun risultato trovato." : "No results found."}</p>`;
+    return `
+      <div class="station-picker media-list-picker youtube-search-panel${compact ? " youtube-search-panel-compact" : ""}">
+        <div class="panel-title">${title}</div>
+        <div class="search-bar">
+          <input id="youtube-search-input" class="search-input" type="search" placeholder="${placeholder}" value="${this._esc(query)}" autocomplete="off" />
+          <button class="panel-btn panel-btn-icon youtube-search-submit" id="youtube-search-btn" type="button" aria-label="${searchLabel}" title="${searchLabel}">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.8" cy="10.8" r="6.3"></circle><path d="m15.5 15.5 4.2 4.2"></path></svg>
+          </button>
+          ${recentSearchList}
+        </div>
+        <div class="channel-list-vertical">${rows}</div>
+      </div>`;
+  },
+
+  _wireYouTubeSearchPanel() {
+    const input = document.getElementById("youtube-search-input") as HTMLInputElement | null;
+    if (input) {
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") this._performYouTubeSearch();
+      });
+    }
+    const button = document.getElementById("youtube-search-btn");
+    if (button) {
+      button.addEventListener("click", () => this._performYouTubeSearch());
+    }
+    document.querySelectorAll<HTMLButtonElement>(".youtube-recent-search-item").forEach((recentSearch) => {
+      recentSearch.addEventListener("click", () => {
+        const query = recentSearch.dataset.query;
+        if (!query || !input) return;
+        input.value = query;
+        this._performYouTubeSearch();
+      });
+    });
+    document.querySelectorAll<HTMLButtonElement>(".youtube-search-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        this._playYouTubeResult(item.dataset.videoId, item.dataset.videoName, item.dataset.videoThumbnail);
+      });
+    });
+  },
+
+  _playYouTubeResult(videoId, name, thumbnail) {
+    if (!videoId) return;
+    const channel = {
+      name: name || "YouTube",
+      url: `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?autoplay=1`,
+      type: "youtube",
+      logo: thumbnail || "",
+      related: [],
+    };
+    this._showTV(channel);
+    this.respond(this._isItalian()
+      ? `Riproduco ${channel.name}, signore.`
+      : `Playing ${channel.name}, sir.`);
+  },
+
+  _performYouTubeSearch() {
+    const input = document.getElementById("youtube-search-input") as HTMLInputElement | null;
+    if (!input) return;
+    const query = input.value.trim();
+    if (!query) return;
+    this._rememberYouTubeSearch(query);
+    this.processCommand(`search ${query} on youtube`);
+  },
+
+  _formatVideoDuration(seconds) {
+    const secs = Number(seconds) || 0;
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    if (h) {
+      return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }
+    return `${m}:${String(s).padStart(2, "0")}`;
+  },
+
+  _setTVContentWithSearch(innerHtml, sideHtml = "") {
+    const searchPanel = this._youtubeSearchState ? this._renderYouTubeSearchPanel(this._youtubeSearchState, true) : "";
+    if (!searchPanel && !sideHtml) {
+      this._setContent(innerHtml, "tv");
+      return;
+    }
+    this._setContent(`
+      <div class="youtube-player-layout">
+        <div class="youtube-player-main">
+          ${innerHtml}
+        </div>
+        <aside class="youtube-search-side">
+          ${searchPanel}
+          ${sideHtml}
+        </aside>
+      </div>`, "tv");
+    this._wireYouTubeSearchPanel();
+  },
 
   _showTV(channel) {
     this._activateSkillStream("tv");
     this._activeTvChannel = channel ? { ...channel } : this._activeTvChannel;
     const canvas = document.getElementById("main-canvas");
     if (canvas) canvas.dataset.view = "tv";
-
     const type = channel.type || "youtube";
 
     if (type === "iframe") {
@@ -675,8 +831,6 @@ const alfred = {
     }
 
     if (type === "hls" || type === "hls-direct") {
-      // hls      → route through backend CORS proxy (for RAI relinker)
-      // hls-direct → load directly from CDN (Akamaized has CORS headers)
       const videoUrl = type === "hls"
         ? `${API}/api/hls-proxy?url=${encodeURIComponent(channel.url)}`
         : channel.url;
@@ -692,12 +846,11 @@ const alfred = {
           </div>
         </div>`, "tv");
 
-      const video = document.getElementById("hls-video");
+      const video = document.getElementById("hls-video") as HTMLVideoElement | null;
       if (typeof Hls !== "undefined" && Hls.isSupported()) {
         const hls = new Hls({ enableWorker: true });
         hls.loadSource(videoUrl);
         hls.attachMedia(video);
-        // Populate resolution selector when manifest parsed
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           try {
             const sel = document.getElementById('tv-res-select') as HTMLSelectElement | null;
@@ -735,7 +888,7 @@ const alfred = {
           } catch (err) { }
         });
         hls.on(Hls.Events.ERROR, (_e, data) => {
-          if (data.fatal) {
+          if (data.fatal && video) {
             video.insertAdjacentHTML("afterend",
               `<p style="color:var(--c-error);padding:8px;font-size:.85rem">
                 Stream non disponibile (${data.type}).</p>`);
@@ -743,9 +896,9 @@ const alfred = {
           }
         });
         (video as any)._hls = hls;
-      } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      } else if (video && typeof video.canPlayType === "function" && video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = videoUrl;  // Native HLS – Safari
-      } else {
+      } else if (video) {
         video.insertAdjacentHTML("afterend",
           `<p style="color:var(--c-error);padding:8px;font-size:.85rem">
             HLS non supportato da questo browser.</p>`);
@@ -773,7 +926,7 @@ const alfred = {
           </div>
         </div>`, "tv");
 
-      const video = document.getElementById("hls-video");
+      const video = document.getElementById("hls-video") as HTMLVideoElement | null;
       if (typeof dashjs !== "undefined" && dashjs.MediaPlayer) {
         const player = dashjs.MediaPlayer().create();
         player.initialize(video, videoUrl, true);
@@ -815,12 +968,14 @@ const alfred = {
           }
         } catch (_e) { }
         player.on(dashjs.MediaPlayer.events.ERROR, () => {
-          video.insertAdjacentHTML("afterend",
-            `<p style="color:var(--c-error);padding:8px;font-size:.85rem">
-              Stream DASH non disponibile.</p>`);
+          if (video) {
+            video.insertAdjacentHTML("afterend",
+              `<p style="color:var(--c-error);padding:8px;font-size:.85rem">
+                Stream DASH non disponibile.</p>`);
+          }
         });
         (video as any)._dash = player;
-      } else {
+      } else if (video) {
         video.insertAdjacentHTML("afterend",
           `<p style="color:var(--c-error);padding:8px;font-size:.85rem">
             DASH non supportato da questo browser.</p>`);
@@ -834,15 +989,35 @@ const alfred = {
       return;
     }
 
-    // Default: YouTube iframe
-    this._setContent(`
+    let relatedHtml = "";
+    const related = Array.isArray(channel.related) ? channel.related : [];
+    if (related.length) {
+      const relatedCards = related.map(item => `
+        <button class="station-card channel-card channel-row"
+          onclick="alfred.processCommand('play ${this._esc(item.url)}')">
+          <div class="channel-row-main youtube-search-row">
+            ${item.thumbnail ? `<img class="channel-row-logo youtube-search-thumbnail" src="${this._esc(item.thumbnail)}" alt="${this._esc(item.name)} thumbnail" loading="lazy" referrerpolicy="no-referrer"/>` : `<span class="channel-row-icon" aria-hidden="true">&#x25B6;</span>`}
+            <div class="channel-row-text youtube-search-text">
+              <strong class="channel-row-name">${this._esc(item.name)}</strong>
+              <span class="channel-row-meta">${this._esc(item.uploader || "")}${item.duration ? ` • ${this._esc(this._formatVideoDuration(item.duration))}` : ""}</span>
+            </div>
+          </div>
+        </button>`).join("");
+      relatedHtml = `
+      <div class="related-videos-panel">
+        <div class="panel-title">${this._isItalian() ? "VIDEO CORRELATI" : "RELATED VIDEOS"}</div>
+        <div class="channel-list-vertical">${relatedCards}</div>
+      </div>`;
+    }
+    const videoHtml = `
       <div class="tv-shell tv-shell-full">
         <div class="tv-player">
           <iframe src="${channel.url}"
             allow="autoplay; encrypted-media" allowfullscreen></iframe>
         </div>
-      </div>`, "tv");
-      this._updateStopVisibility();
+      </div>`;
+    this._setTVContentWithSearch(videoHtml, relatedHtml);
+    this._updateStopVisibility();
   },
 
   _reopenActiveTv() {

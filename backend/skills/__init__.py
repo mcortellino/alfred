@@ -5,5 +5,8 @@ from .radio_skill import RadioSkill
 from .tv_skill import TVSkill
 from .shopping_skill import ShoppingSkill
 from .timer_skill import TimerSkill
+from .youtube_skill import YouTubeSkill
 
-__all__ = ["BaseSkill", "CalendarSkill", "RadioSkill", "TVSkill", "ShoppingSkill", "TimerSkill"]
+__all__ = [
+    "BaseSkill", "CalendarSkill", "RadioSkill", "TVSkill", "ShoppingSkill", "TimerSkill", "YouTubeSkill",
+]

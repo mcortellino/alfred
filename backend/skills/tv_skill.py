@@ -44,8 +44,8 @@ FALLBACK_CHANNELS: Dict[str, Dict[str, str]] = {
     # ── RAI (via relinker ufficiale → CDN tokenizzato) ─────────────
     "rai 1": {
         "name": "RAI uno",
-        "url": "https://mediapolis.rai.it/relinker/relinkerServlet.htm?cont=2606803&output=23",
-        "type": "hls",
+        "url": "https://dash2.antik.sk/live/test_rai_uno_tizen/playlist.m3u8",
+        "type": "link",
     },
     "rai 2": {
         "name": "RAI 2",
@@ -133,6 +133,8 @@ M3U_URL_DEFAULT = (
     "https://raw.githubusercontent.com/xN1ckuz/OpenIPTVItaly/refs/heads/main/"
     "OpenIPTVItaly_No_EPG.m3u"
 )
+M3U_FILE_DEFAULT = os.path.join(os.path.dirname(__file__), "..", "data", "tv_channels.m3u")
+M3U_LEGACY_FILE_DEFAULT = os.path.join(os.path.dirname(__file__), "..", "data", "tv_m3u_urls.txt")
 
 EPG_URLS_DEFAULT = "https://epgshare01.online/epgshare01/epg_ripper_IT1.xml.gz"
 
@@ -204,6 +206,12 @@ def _youtube_embed(url: str) -> str:
         video_id = url.split("youtu.be/", 1)[1].split("?", 1)[0]
         return f"https://www.youtube.com/embed/{quote(video_id)}?autoplay=1"
     return url
+
+
+def _iframe_proxy_url(url: str) -> str:
+    if url.startswith("/api/frame-proxy"):
+        return url
+    return f"/api/frame-proxy?url={quote(url, safe='')}"
 
 
 def _detect_stream_type(url: str) -> str:
@@ -283,8 +291,13 @@ def _parse_m3u_playlist(payload: str) -> Tuple[Dict[str, Dict[str, str]], Dict[s
                 key = f"{key_base} {index}"
                 index += 1
 
-            stream_type = _detect_stream_type(line)
+            stream_type = pending_meta.get("type", "").strip().lower()
+            if stream_type not in {"youtube", "link", "hls", "hls-direct", "dash", "dash-direct", "iframe"}:
+                stream_type = _detect_stream_type(line)
+
             url = _youtube_embed(line) if stream_type == "youtube" else line
+            if stream_type == "iframe":
+                url = _iframe_proxy_url(url)
 
             channels[key] = {
                 "name": display_name,
@@ -349,6 +362,28 @@ def _fetch_text(url: str, timeout: float = 14.0) -> str:
             raise RuntimeError(f"Text fetch failed: urllib={urllib_exc}; curl_cffi={curl_exc}") from curl_exc
 
 
+def _load_static_m3u_payload() -> str | None:
+    explicit_path = os.getenv("ALFRED_TV_M3U_FILE") or os.getenv("ALFRED_TV_M3U_URL_FILE")
+    candidates: List[str] = []
+    if explicit_path:
+        candidates.append(explicit_path)
+    candidates.extend([M3U_FILE_DEFAULT, M3U_LEGACY_FILE_DEFAULT])
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            if os.path.exists(candidate):
+                with open(candidate, encoding="utf-8") as handle:
+                    payload = handle.read()
+                if payload.strip():
+                    return payload
+        except OSError:
+            continue
+
+    return None
+
+
 def _parse_xmltv_time(value: str) -> dt.datetime | None:
     raw = (value or "").strip()
     if not raw:
@@ -375,7 +410,8 @@ class TVSkill(BaseSkill):
     def __init__(self) -> None:
         self._channels: Dict[str, Dict[str, Any]] = dict(FALLBACK_CHANNELS)
         self._aliases: Dict[str, str] = dict(CHANNEL_ALIASES)
-        self._m3u_url = os.getenv("ALFRED_TV_M3U_URL", M3U_URL_DEFAULT)
+        self._m3u_url = os.getenv("ALFRED_TV_M3U_URL", "")
+        self._m3u_payload = _load_static_m3u_payload()
         self._epg_urls_env = os.getenv("ALFRED_TV_EPG_URLS", EPG_URLS_DEFAULT)
         self._epg_by_channel_id: Dict[str, List[Dict[str, Any]]] = {}
         self._epg_name_to_id: Dict[str, str] = {}
@@ -392,11 +428,15 @@ class TVSkill(BaseSkill):
                 "televisione", "canale", "guarda"]
 
     def matches(self, command: str) -> bool:
+        cmd = command.lower()
+
+        # Never treat YouTube requests as TV commands.
+        if re.search(r"\b(youtube|youtu\.be)\b", cmd) or re.search(r"\byt\b", cmd):
+            return False
+
         # Standard trigger words first.
         if super().matches(command):
             return True
-
-        cmd = command.lower()
 
         # Follow-up utterances should still map to TV if they mention a known channel.
         for key in self._channels.keys():
@@ -420,10 +460,26 @@ class TVSkill(BaseSkill):
         return None
 
     def _load_remote_channels(self) -> None:
+        payload: str | None = None
+        source_name = "static file"
+
+        if self._m3u_payload is not None:
+            payload = self._m3u_payload
+        elif self._m3u_url:
+            source_name = self._m3u_url
+            try:
+                payload = _fetch_m3u(self._m3u_url)
+            except Exception as exc:
+                print(f"[TV] M3U load failed for {self._m3u_url}: {exc}")
+                return
+        else:
+            print("[TV] No static M3U file or URL configured, using fallback list")
+            return
+
         try:
-            payload = _fetch_m3u(self._m3u_url)
             channels, aliases, m3u_epg_urls = _parse_m3u_playlist(payload)
             if not channels:
+                print(f"[TV] No channels parsed from {source_name}, using fallback list")
                 return
 
             # Keep only a compact subset for UI responsiveness.
@@ -442,14 +498,14 @@ class TVSkill(BaseSkill):
             for alias, key in aliases.items():
                 if key in self._channels:
                     merged_aliases.setdefault(alias, key)
-            self._aliases = merged_aliases
 
             # Ensure old explicit aliases still resolve if corresponding channels exist.
             for alias, legacy_key in CHANNEL_ALIASES.items():
                 if legacy_key in self._channels:
-                    self._aliases[alias] = legacy_key
+                    merged_aliases[alias] = legacy_key
+            self._aliases = merged_aliases
         except Exception as exc:
-            print(f"[TV] M3U load failed, using fallback list: {exc}")
+            print(f"[TV] M3U parse failed from {source_name}: {exc}")
 
     def _load_epg(self) -> None:
         sources = _split_epg_urls(self._epg_urls_env)

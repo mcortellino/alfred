@@ -5,6 +5,7 @@ from skills.radio_skill import RadioSkill
 from skills.tv_skill import TVSkill
 from skills.shopping_skill import ShoppingSkill
 from skills.timer_skill import TimerSkill
+from skills.youtube_skill import YouTubeSkill
 
 
 class SkillManager:
@@ -16,6 +17,7 @@ class SkillManager:
 
     def _register_defaults(self):
         self.register(CalendarSkill())
+        self.register(YouTubeSkill())
         self.register(RadioSkill())
         self.register(TVSkill())
         self.register(ShoppingSkill())
@@ -34,7 +36,8 @@ class SkillManager:
     def handle(self, command: str, lang: str = "en") -> Dict[str, Any]:
         """Dispatch a command to the best-matching skill."""
         it = lang == "it"
-        cmd = (command or "").lower().strip()
+        raw_cmd = (command or "").strip()
+        cmd = raw_cmd.lower()
 
         # Global emergency stop command (including common STT typo "sop").
         if self._is_stop_command(cmd):
@@ -46,7 +49,7 @@ class SkillManager:
         for skill in self._skills:
             if skill.matches(cmd):
                 try:
-                    return skill.handle(cmd, lang)
+                    return skill.handle(raw_cmd, lang)
                 except Exception as exc:
                     return {
                         "action": "error",

@@ -34,6 +34,13 @@ export function SkillRail() {
         icon=${html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14v11H5z"/><path d="M8 8 19 3"/><circle cx="9" cy="13.5" r="1.8"/><path d="M14 12h3M14 15h3"/></svg>`}
       />
       <${SkillButton}
+        id="btn-youtube"
+        className="rail-btn"
+        title="Play YouTube"
+        label="YouTube"
+        icon=${html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6.5" width="19" height="11" rx="3"/><path d="M10 8.5l5 3.5-5 3.5V8.5z"/></svg>`}
+      />
+      <${SkillButton}
         id="btn-tv"
         className="rail-btn"
         title="Show TV"
