@@ -703,10 +703,22 @@ class TVSkill(BaseSkill):
 
         channel = self._resolve_channel(cmd)
         if channel:
+            channel_key = next(key for key, item in self._channels.items() if item is channel)
             return {
                 "action": "tv_show",
                 "message": f"Mostro {channel['name']}, signore." if it else f"Showing {channel['name']}, sir.",
                 "data": {
+                    "key": channel_key,
+                    "channel_list": [
+                        {
+                            "key": key,
+                            "name": item.get("name", key),
+                            "url": item.get("url", ""),
+                            "type": item.get("type", "link"),
+                            "logo": item.get("tvg_logo", ""),
+                        }
+                        for key, item in self._channels.items()
+                    ],
                     "name": channel.get("name", ""),
                     "url": channel.get("url", ""),
                     "type": channel.get("type", "link"),
