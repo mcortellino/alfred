@@ -9,113 +9,6 @@ from urllib.request import Request, urlopen
 from typing import Any, Dict, List, Tuple
 from .base_skill import BaseSkill
 
-FALLBACK_CHANNELS: Dict[str, Dict[str, str]] = {
-    # ── International (YouTube embed) ─────────────────────────────
-    "bbc news": {
-        "name": "BBC News",
-        "url": "https://www.youtube.com/embed/live_stream?channel=UCCjyq_K1Xwfg8Lndy7lKMpA&autoplay=1",
-        "type": "youtube",
-    },
-    "euronews": {
-        "name": "Euronews",
-        "url": "https://www.youtube.com/embed/live_stream?channel=UCN0ToPXpBNnFU1k3hq11oiw&autoplay=1",
-        "type": "youtube",
-    },
-    "al jazeera": {
-        "name": "Al Jazeera",
-        "url": "https://www.youtube.com/embed/live_stream?channel=UCNye-wNBqNL5ZzHSJj3l8Bg&autoplay=1",
-        "type": "youtube",
-    },
-    "france 24": {
-        "name": "France 24",
-        "url": "https://www.youtube.com/embed/live_stream?channel=UCQfwfsi5VrQ8yKZ-UWmAoBg&autoplay=1",
-        "type": "youtube",
-    },
-    "nasa": {
-        "name": "NASA TV",
-        "url": "https://www.youtube.com/embed/live_stream?channel=UCLA_DiR1FfKNvjuUpBHmylQ&autoplay=1",
-        "type": "youtube",
-    },
-    "dw": {
-        "name": "DW News",
-        "url": "https://www.youtube.com/embed/live_stream?channel=UCknLrEdhRCp1aegoMqRaCZg&autoplay=1",
-        "type": "youtube",
-    },
-    # ── RAI (via relinker ufficiale → CDN tokenizzato) ─────────────
-    "rai 1": {
-        "name": "RAI uno",
-        "url": "https://dash2.antik.sk/live/test_rai_uno_tizen/playlist.m3u8",
-        "type": "link",
-    },
-    "rai 2": {
-        "name": "RAI 2",
-        "url": "https://mediapolis.rai.it/relinker/relinkerServlet.htm?cont=308718&output=23",
-        "type": "hls",
-    },
-    "rai 3": {
-        "name": "RAI 3",
-        "url": "https://mediapolis.rai.it/relinker/relinkerServlet.htm?cont=308709&output=23",
-        "type": "hls",
-    },
-    "rai 4": {
-        "name": "RAI 4",
-        "url": "https://mediapolis.rai.it/relinker/relinkerServlet.htm?cont=746966&output=23",
-        "type": "hls",
-    },
-    "rai 5": {
-        "name": "RAI 5",
-        "url": "https://mediapolis.rai.it/relinker/relinkerServlet.htm?cont=395276&output=23",
-        "type": "hls",
-    },
-    "rai news": {
-        "name": "RAI News 24",
-        "url": "https://mediapolis.rai.it/relinker/relinkerServlet.htm?cont=1&output=23",
-        "type": "hls",
-    },
-    # ── Mediaset (HLS geo-restricted – solo da IP italiani) ────────────
-    "rete 4": {
-        "name": "Rete 4",
-        "url": "https://live3-mediaset-it.akamaized.net/Content/hls_h0_clr_vos/live/channel(r4)/index.m3u8",
-        "type": "hls",
-    },
-    "canale 5": {
-        "name": "Canale 5",
-        "url": "https://live3-mediaset-it.akamaized.net/Content/hls_h0_clr_vos/live/channel(C5)/index.m3u8",
-        "type": "hls",
-    },
-    "italia 1": {
-        "name": "Italia 1",
-        "url": "https://live3-mediaset-it.akamaized.net/Content/hls_h0_clr_vos/live/channel(i1)/index.m3u8",
-        "type": "hls",
-    },
-    # ── Altre reti – link diretto ──────────────────────────────────
-    "la7": {
-        "name": "La 7",
-        "url": "https://www.la7.it/dirette-tv",
-        "type": "link",
-    },
-    "tv8": {
-        "name": "TV8",
-        "url": "https://tv8.it/diretta",
-        "type": "link",
-    },
-    "nove": {
-        "name": "Nove",
-        "url": "https://www.discoveryplus.com/it/show/nove-live",
-        "type": "link",
-    },
-    "sky tg24": {
-        "name": "Sky TG24",
-        "url": "https://tg24.sky.it/diretta",
-        "type": "link",
-    },
-    "tgcom24": {
-        "name": "TGCom 24",
-        "url": "https://www.tgcom24.mediaset.it/diretta",
-        "type": "link",
-    },
-}
-
 CHANNEL_ALIASES: Dict[str, str] = {
     # Italian spoken variants
     "rai uno": "rai 1",
@@ -129,12 +22,9 @@ CHANNEL_ALIASES: Dict[str, str] = {
     "tg com 24": "tgcom24",
 }
 
-M3U_URL_DEFAULT = (
-    "https://raw.githubusercontent.com/xN1ckuz/OpenIPTVItaly/refs/heads/main/"
-    "OpenIPTVItaly_No_EPG.m3u"
+M3U_CHANNELS_FILE = os.path.join(
+    os.path.dirname(__file__), "..", "data", "tv_m3u_urls.txt"
 )
-M3U_FILE_DEFAULT = os.path.join(os.path.dirname(__file__), "..", "data", "tv_channels.m3u")
-M3U_LEGACY_FILE_DEFAULT = os.path.join(os.path.dirname(__file__), "..", "data", "tv_m3u_urls.txt")
 
 EPG_URLS_DEFAULT = "https://epgshare01.online/epgshare01/epg_ripper_IT1.xml.gz"
 
@@ -218,7 +108,9 @@ def _detect_stream_type(url: str) -> str:
     u = (url or "").lower()
     if "youtube.com" in u or "youtu.be" in u:
         return "youtube"
-    if ".m3u8" in u or "relinker" in u:
+    if "relinker" in u:
+        return "hls"
+    if ".m3u8" in u:
         # Use direct HLS for broad host compatibility with open IPTV lists.
         return "hls-direct"
     if ".mpd" in u:
@@ -323,23 +215,6 @@ def _parse_m3u_playlist(payload: str) -> Tuple[Dict[str, Dict[str, str]], Dict[s
     return channels, aliases, epg_urls
 
 
-def _fetch_m3u(url: str, timeout: float = 12.0) -> str:
-    try:
-        req = Request(url, headers=_HTTP_HEADERS)
-        with urlopen(req, timeout=timeout) as resp:
-            return resp.read().decode("utf-8", errors="ignore")
-    except Exception as urllib_exc:
-        try:
-            from curl_cffi import requests as curl_requests
-
-            resp = curl_requests.get(url, timeout=timeout, impersonate="chrome120", verify=False)
-            if resp.status_code >= 400:
-                raise RuntimeError(f"HTTP {resp.status_code}")
-            return resp.text
-        except Exception as curl_exc:
-            raise RuntimeError(f"M3U fetch failed: urllib={urllib_exc}; curl_cffi={curl_exc}") from curl_exc
-
-
 def _fetch_text(url: str, timeout: float = 14.0) -> str:
     def _decode(payload: bytes, source_url: str) -> str:
         if source_url.lower().endswith(".gz") or payload[:2] == b"\x1f\x8b":
@@ -360,28 +235,6 @@ def _fetch_text(url: str, timeout: float = 14.0) -> str:
             return _decode(resp.content, url)
         except Exception as curl_exc:
             raise RuntimeError(f"Text fetch failed: urllib={urllib_exc}; curl_cffi={curl_exc}") from curl_exc
-
-
-def _load_static_m3u_payload() -> str | None:
-    explicit_path = os.getenv("ALFRED_TV_M3U_FILE") or os.getenv("ALFRED_TV_M3U_URL_FILE")
-    candidates: List[str] = []
-    if explicit_path:
-        candidates.append(explicit_path)
-    candidates.extend([M3U_FILE_DEFAULT, M3U_LEGACY_FILE_DEFAULT])
-
-    for candidate in candidates:
-        if not candidate:
-            continue
-        try:
-            if os.path.exists(candidate):
-                with open(candidate, encoding="utf-8") as handle:
-                    payload = handle.read()
-                if payload.strip():
-                    return payload
-        except OSError:
-            continue
-
-    return None
 
 
 def _parse_xmltv_time(value: str) -> dt.datetime | None:
@@ -408,14 +261,12 @@ def _parse_xmltv_time(value: str) -> dt.datetime | None:
 class TVSkill(BaseSkill):
 
     def __init__(self) -> None:
-        self._channels: Dict[str, Dict[str, Any]] = dict(FALLBACK_CHANNELS)
+        self._channels: Dict[str, Dict[str, Any]] = {}
         self._aliases: Dict[str, str] = dict(CHANNEL_ALIASES)
-        self._m3u_url = os.getenv("ALFRED_TV_M3U_URL", "")
-        self._m3u_payload = _load_static_m3u_payload()
         self._epg_urls_env = os.getenv("ALFRED_TV_EPG_URLS", EPG_URLS_DEFAULT)
         self._epg_by_channel_id: Dict[str, List[Dict[str, Any]]] = {}
         self._epg_name_to_id: Dict[str, str] = {}
-        self._load_remote_channels()
+        self._load_channels()
         self._load_epg()
 
     @property
@@ -459,30 +310,20 @@ class TVSkill(BaseSkill):
 
         return None
 
-    def _load_remote_channels(self) -> None:
-        payload: str | None = None
-        source_name = "static file"
-
-        if self._m3u_payload is not None:
-            payload = self._m3u_payload
-        elif self._m3u_url:
-            source_name = self._m3u_url
-            try:
-                payload = _fetch_m3u(self._m3u_url)
-            except Exception as exc:
-                print(f"[TV] M3U load failed for {self._m3u_url}: {exc}")
-                return
-        else:
-            print("[TV] No static M3U file or URL configured, using fallback list")
+    def _load_channels(self) -> None:
+        try:
+            with open(M3U_CHANNELS_FILE, encoding="utf-8") as handle:
+                payload = handle.read()
+        except OSError as exc:
+            print(f"[TV] Channel list load failed for {M3U_CHANNELS_FILE}: {exc}")
             return
 
         try:
             channels, aliases, m3u_epg_urls = _parse_m3u_playlist(payload)
             if not channels:
-                print(f"[TV] No channels parsed from {source_name}, using fallback list")
+                print(f"[TV] No channels parsed from {M3U_CHANNELS_FILE}")
                 return
 
-            # Keep only a compact subset for UI responsiveness.
             max_items = int(os.getenv("ALFRED_TV_MAX_CHANNELS", "220"))
             ordered_keys = list(channels.keys())[:max_items]
             self._channels = {k: channels[k] for k in ordered_keys}
@@ -505,7 +346,7 @@ class TVSkill(BaseSkill):
                     merged_aliases[alias] = legacy_key
             self._aliases = merged_aliases
         except Exception as exc:
-            print(f"[TV] M3U parse failed from {source_name}: {exc}")
+            print(f"[TV] M3U parse failed from {M3U_CHANNELS_FILE}: {exc}")
 
     def _load_epg(self) -> None:
         sources = _split_epg_urls(self._epg_urls_env)

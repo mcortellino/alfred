@@ -167,6 +167,7 @@ _HLS_ALLOWED_HOSTS = {
 # Subdomains of these base domains are also allowed (e.g. *.msvdn.net for RAI CDN)
 _HLS_ALLOWED_DOMAINS = {
     "msvdn.net",         # RAI CDN
+    "netrw.it",          # RAI Yoyo CDN
     "akamaihd.net",      # legacy Akamai HLS
     "akamaized.net",     # Mediaset / other Akamai HLS CDN
 }
@@ -246,7 +247,11 @@ async def hls_proxy(url: str):
         raise HTTPException(status_code=403, detail="Host not permitted.")
 
     hostname = parsed.hostname or ""
-    is_rai = hostname in ("mediapolis.rai.it", "mediapolismanager.rai.it")
+    is_rai = (
+        hostname in ("mediapolis.rai.it", "mediapolismanager.rai.it")
+        or hostname == "netrw.it"
+        or hostname.endswith(".netrw.it")
+    )
 
     req_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
