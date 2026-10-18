@@ -553,8 +553,12 @@ const alfred = {
       case "radio_stations":   this._showStationPicker(data);       break;
       case "tv_show":
         this._activeTvChannel = data ? { ...data } : null;
-        this._showMediaLoader("tv", data?.name || "");
-        afterSpeech = () => this._scheduleMediaStart(() => this._showTV(data), "tv");
+        if (data?.type === "youtube") {
+          this._showTV(data);
+        } else {
+          this._showMediaLoader("tv", data?.name || "");
+          afterSpeech = () => this._scheduleMediaStart(() => this._showTV(data), "tv");
+        }
         break;
       case "tv_off":
         this._activeTvChannel = null;
@@ -840,7 +844,9 @@ const alfred = {
           <div class="tv-player" style="position:relative">
             <video id="hls-video" controls autoplay playsinline
               style="width:100%;height:100%;background:#000;display:block;"></video>
-            ${this._renderTvPlaybackToolbar(channel)}
+            <div id="tv-res-controls" style="position:absolute;top:12px;right:12px;z-index:20;">
+              <select id="tv-res-select" aria-label="Resolution" style="background:rgba(0,0,0,0.6);color:#fff;border:1px solid rgba(255,255,255,0.08);padding:6px;border-radius:6px;"></select>
+            </div>
           </div>
         </div>`, "tv");
 
@@ -849,6 +855,42 @@ const alfred = {
         const hls = new Hls({ enableWorker: true });
         hls.loadSource(videoUrl);
         hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          try {
+            const sel = document.getElementById('tv-res-select') as HTMLSelectElement | null;
+            if (!sel) return;
+            sel.innerHTML = '';
+            const autoOpt = document.createElement('option');
+            autoOpt.value = 'auto';
+            autoOpt.text = 'Auto';
+            sel.appendChild(autoOpt);
+            hls.levels.forEach((lvl: any, idx: number) => {
+              const height = lvl.height || 0;
+              const bitrateK = Math.round((lvl.bitrate || 0) / 1000);
+              const title = (lvl.name || '').trim();
+              let label = height
+                ? `${idx + 1}: ${height}p ${bitrateK}kbps`
+                : `${idx + 1}: ${bitrateK}kbps`;
+              if (title) {
+                label = `${idx + 1}: ${title} ${bitrateK}kbps`;
+              }
+              const opt = document.createElement('option');
+              opt.value = String(idx);
+              opt.text = label;
+              sel.appendChild(opt);
+            });
+            sel.value = 'auto';
+            sel.addEventListener('change', (e) => {
+              const v = (e.target as HTMLSelectElement).value;
+              if (v === 'auto') {
+                hls.currentLevel = -1;
+              } else {
+                const levelIdx = parseInt(v, 10);
+                if (!Number.isNaN(levelIdx)) hls.currentLevel = levelIdx;
+              }
+            });
+          } catch (err) { }
+        });
         hls.on(Hls.Events.ERROR, (_e, data) => {
           if (data.fatal && video) {
             video.insertAdjacentHTML("afterend",
@@ -882,7 +924,9 @@ const alfred = {
           <div class="tv-player" style="position:relative">
             <video id="hls-video" controls autoplay playsinline
               style="width:100%;height:100%;background:#000;display:block;"></video>
-            ${this._renderTvPlaybackToolbar(channel)}
+            <div id="tv-res-controls" style="position:absolute;top:12px;right:12px;z-index:20;">
+              <select id="tv-res-select" aria-label="Resolution" style="background:rgba(0,0,0,0.6);color:#fff;border:1px solid rgba(255,255,255,0.08);padding:6px;border-radius:6px;"></select>
+            </div>
           </div>
         </div>`, "tv");
 
@@ -890,6 +934,43 @@ const alfred = {
       if (typeof dashjs !== "undefined" && dashjs.MediaPlayer) {
         const player = dashjs.MediaPlayer().create();
         player.initialize(video, videoUrl, true);
+        try {
+          const sel = document.getElementById('tv-res-select') as HTMLSelectElement | null;
+          if (sel) {
+            sel.innerHTML = '';
+            const autoOpt = document.createElement('option');
+            autoOpt.value = 'auto';
+            autoOpt.text = 'Auto';
+            sel.appendChild(autoOpt);
+            const infos = player.getBitrateInfoListFor('video') || [];
+            infos.forEach((info: any, idx: number) => {
+              const height = info.height || 0;
+              const bitrateK = Math.round((info.bitrate || 0) / 1000);
+              const label = height
+                ? `${idx + 1}: ${height}p ${bitrateK}kbps`
+                : `${idx + 1}: ${bitrateK}kbps`;
+              const opt = document.createElement('option');
+              opt.value = String(idx);
+              opt.text = label;
+              sel.appendChild(opt);
+            });
+            sel.value = 'auto';
+            sel.addEventListener('change', (e) => {
+              const v = (e.target as HTMLSelectElement).value;
+              try {
+                if (v === 'auto') {
+                  player.setAutoSwitchQualityFor('video', true);
+                } else {
+                  const qualityIdx = parseInt(v, 10);
+                  if (!Number.isNaN(qualityIdx)) {
+                    player.setAutoSwitchQualityFor('video', false);
+                    player.setQualityFor('video', qualityIdx);
+                  }
+                }
+              } catch (_err) { }
+            });
+          }
+        } catch (_e) { }
         player.on(dashjs.MediaPlayer.events.ERROR, () => {
           if (video) {
             video.insertAdjacentHTML("afterend",
@@ -941,52 +1022,6 @@ const alfred = {
       </div>`;
     this._setTVContentWithSearch(videoHtml, relatedHtml);
     this._updateStopVisibility();
-  },
-
-  _renderTvPlaybackToolbar(channel) {
-    const channels = Array.isArray(channel.channel_list) ? channel.channel_list : [];
-    if (!channels.length) return "";
-
-    const index = channels.findIndex((item) => item.key === channel.key);
-    const previousLabel = this._isItalian() ? "Canale precedente" : "Previous channel";
-    const nextLabel = this._isItalian() ? "Canale successivo" : "Next channel";
-    const channelLabel = this._isItalian() ? "Seleziona canale" : "Select channel";
-    const options = channels.map((item) => `
-      <option value="${this._esc(item.key)}" ${item.key === channel.key ? "selected" : ""}>
-        ${this._esc(item.name)}
-      </option>`).join("");
-
-    return `
-      <div class="tv-playback-toolbar">
-        <button class="tv-channel-nav-btn" type="button"
-          aria-label="${previousLabel}" title="${previousLabel}"
-          onclick="alfred._stepTvChannel(-1)" ${index <= 0 ? "disabled" : ""}>&#x25C0;</button>
-        <select class="tv-channel-select" aria-label="${channelLabel}"
-          onchange="alfred._changeTvChannel(this.value)">${options}</select>
-        <button class="tv-channel-nav-btn" type="button"
-          aria-label="${nextLabel}" title="${nextLabel}"
-          onclick="alfred._stepTvChannel(1)" ${index < 0 || index >= channels.length - 1 ? "disabled" : ""}>&#x25B6;</button>
-      </div>`;
-  },
-
-  _stepTvChannel(direction) {
-    const channel = this._activeTvChannel;
-    if (!channel || !Array.isArray(channel.channel_list)) return;
-
-    const currentIndex = channel.channel_list.findIndex((item) => item.key === channel.key);
-    if (currentIndex < 0) return;
-    const nextChannel = channel.channel_list[currentIndex + direction];
-    if (nextChannel) this._changeTvChannel(nextChannel.key);
-  },
-
-  _changeTvChannel(key) {
-    const channel = this._activeTvChannel;
-    if (!channel || !Array.isArray(channel.channel_list)) return;
-
-    const selected = channel.channel_list.find((item) => item.key === key);
-    if (!selected) return;
-
-    this._showTV({ ...selected, channel_list: channel.channel_list });
   },
 
   _reopenActiveTv() {

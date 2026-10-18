@@ -1202,58 +1202,6 @@ body {
   border-radius: 0;
 }
 
-.tv-playback-toolbar {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  right: 12px;
-  z-index: 20;
-  display: grid;
-  grid-template-columns: 1fr minmax(140px, 320px) 1fr;
-  align-items: center;
-  pointer-events: none;
-}
-
-.tv-playback-toolbar select,
-.tv-channel-nav-btn {
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  pointer-events: auto;
-}
-
-.tv-channel-select {
-  justify-self: center;
-  width: 100%;
-  max-width: 320px;
-  min-width: 0;
-  padding: 6px;
-}
-
-.tv-channel-nav-btn {
-  justify-self: start;
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.tv-channel-nav-btn:last-child {
-  justify-self: end;
-}
-
-.tv-channel-nav-btn:hover:not(:disabled) {
-  background: rgba(0, 0, 0, 0.85);
-}
-
-.tv-channel-nav-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
 .shopping-items {
   max-height: 42vh;
   overflow: auto;
