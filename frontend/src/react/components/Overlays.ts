@@ -17,6 +17,13 @@ export function Overlays() {
               <option value="it">Italiano</option>
             </select>
           </div>
+          <div class="settings-row">
+            <label for="settings-clock-select">Clock style</label>
+            <select id="settings-clock-select">
+              <option value="digital">Digital</option>
+              <option value="analog">Analog</option>
+            </select>
+          </div>
         </div>
       </div>
 

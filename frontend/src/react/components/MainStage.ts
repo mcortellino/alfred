@@ -6,8 +6,33 @@ export function MainStage() {
     <main id="main-stage" aria-live="polite">
       <section id="main-canvas" data-state="idle" data-view="idle">
         <div id="idle-canvas">
+          <div class="halloween-decorations" aria-hidden="true">
+            <span class="halloween-bat">🦇</span>
+            <span class="halloween-pumpkin halloween-pumpkin-left">🎃</span>
+            <span class="halloween-pumpkin halloween-pumpkin-right">🎃</span>
+          </div>
           <div id="idle-datetime" aria-live="off">
             <div id="idle-clock">--:--:--</div>
+            <div id="idle-analog-clock" role="img" aria-label="Analog clock">
+              <div class="clock-face" aria-hidden="true">
+                <span class="clock-number">12</span>
+                <span class="clock-number">1</span>
+                <span class="clock-number">2</span>
+                <span class="clock-number">3</span>
+                <span class="clock-number">4</span>
+                <span class="clock-number">5</span>
+                <span class="clock-number">6</span>
+                <span class="clock-number">7</span>
+                <span class="clock-number">8</span>
+                <span class="clock-number">9</span>
+                <span class="clock-number">10</span>
+                <span class="clock-number">11</span>
+                <span class="clock-hand clock-hour-hand"></span>
+                <span class="clock-hand clock-minute-hand"></span>
+                <span class="clock-hand clock-second-hand"></span>
+                <span class="clock-center"></span>
+              </div>
+            </div>
             <div id="idle-date">--</div>
           </div>
           <div id="alfred-face-container"></div>

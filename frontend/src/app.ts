@@ -24,6 +24,7 @@ const alfred = {
   _confirmEscHandler: null,
   _timerAlarm: null,
   _idleClockInterval: null,
+  _clockStyle: "digital",
   _homeHiddenView: null,
   _activeRadioStation: null,
   _activeTvChannel: null,
@@ -112,6 +113,10 @@ const alfred = {
 
     const now = new Date();
     const locale = this._isItalian() ? "it-IT" : "en-GB";
+    this._updateSeasonalTheme(now);
+    const hour = now.getHours() % 12;
+    const minute = now.getMinutes();
+    const second = now.getSeconds();
 
     clockEl.textContent = now.toLocaleTimeString(locale, {
       hour: "2-digit",
@@ -119,12 +124,28 @@ const alfred = {
       second: "2-digit",
     });
 
+    const analogClockEl = document.getElementById("idle-analog-clock");
+    if (analogClockEl) {
+      analogClockEl.setAttribute("aria-label", now.toLocaleTimeString(locale));
+      const hourHand = analogClockEl.querySelector(".clock-hour-hand");
+      const minuteHand = analogClockEl.querySelector(".clock-minute-hand");
+      const secondHand = analogClockEl.querySelector(".clock-second-hand");
+      if (hourHand) hourHand.style.transform = `rotate(${(hour + minute / 60) * 30}deg)`;
+      if (minuteHand) minuteHand.style.transform = `rotate(${(minute + second / 60) * 6}deg)`;
+      if (secondHand) secondHand.style.transform = `rotate(${second * 6}deg)`;
+    }
+
     dateEl.textContent = now.toLocaleDateString(locale, {
       weekday: "long",
       day: "2-digit",
       month: "long",
       year: "numeric",
     });
+  },
+
+  _updateSeasonalTheme(date) {
+    const isHalloweenSeason = date.getMonth() === 9 && date.getDate() >= 25;
+    document.body.classList.toggle("halloween-theme", isHalloweenSeason);
   },
 
   _wireDiagnostics() {
@@ -239,6 +260,19 @@ const alfred = {
   // ── Settings ─────────────────────────────────────────────────────
 
   _wireSettings() {
+    const clockStyleSelect = document.getElementById("settings-clock-select");
+    const dateTime = document.getElementById("idle-datetime");
+    try {
+      const savedClockStyle = localStorage.getItem("alfred.clockStyle");
+      if (savedClockStyle === "digital" || savedClockStyle === "analog") {
+        this._clockStyle = savedClockStyle;
+      }
+    } catch (err) {
+      this._diag(`clock preference read error ${err?.message || err}`);
+    }
+    if (clockStyleSelect) clockStyleSelect.value = this._clockStyle;
+    if (dateTime) dateTime.dataset.clock = this._clockStyle;
+
     const openBtn = document.getElementById("btn-settings");
     if (openBtn) {
       openBtn.addEventListener("click", () => this._toggleSettings(true));
@@ -256,6 +290,21 @@ const alfred = {
         if (next === "en" || next === "it") {
           this.lang = next;
           this._applyLanguageUI();
+        }
+      });
+    }
+
+    if (clockStyleSelect) {
+      clockStyleSelect.addEventListener("change", (evt) => {
+        const next = evt.target?.value;
+        if (next !== "digital" && next !== "analog") return;
+
+        this._clockStyle = next;
+        if (dateTime) dateTime.dataset.clock = next;
+        try {
+          localStorage.setItem("alfred.clockStyle", next);
+        } catch (err) {
+          this._diag(`clock preference save error ${err?.message || err}`);
         }
       });
     }
