@@ -1032,7 +1032,9 @@ const alfred = {
         const nextLabel = this._isItalian() ? "Dopo" : "Next";
         const nowText = onAir
             ? `${this._formatTvEpgTime(onAir.start)} ${this._esc(onAir.title || "")}`
-            : (this._isItalian() ? "Dati non disponibili" : "No schedule data");
+            : nextUp
+                ? (this._isItalian() ? "Nessun programma in onda" : "No programme currently airing")
+                : (this._isItalian() ? "Dati non disponibili" : "No schedule data");
         const nextText = nextUp
             ? `${this._formatTvEpgTime(nextUp.start)} ${this._esc(nextUp.title || "")}`
             : (this._isItalian() ? "-" : "-");

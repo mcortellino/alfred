@@ -3,6 +3,7 @@ import re
 import io
 import gzip
 import datetime as dt
+import threading
 import xml.etree.ElementTree as ET
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -27,6 +28,7 @@ M3U_CHANNELS_FILE = os.path.join(
 )
 
 EPG_URLS_DEFAULT = "https://epgshare01.online/epgshare01/epg_ripper_IT1.xml.gz"
+EPG_REFRESH_INTERVAL = dt.timedelta(hours=6)
 
 _HTTP_HEADERS = {
     "User-Agent": (
@@ -46,6 +48,10 @@ def _normalize_channel_key(text: str) -> str:
     key = re.sub(r"\b(hd|uhd|fhd|sd|4k)\b", " ", key)
     key = re.sub(r"\s+", " ", key).strip()
     return key
+
+
+def _compact_channel_key(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", text)
 
 
 def _key_variants(text: str) -> List[str]:
@@ -266,6 +272,8 @@ class TVSkill(BaseSkill):
         self._epg_urls_env = os.getenv("ALFRED_TV_EPG_URLS", EPG_URLS_DEFAULT)
         self._epg_by_channel_id: Dict[str, List[Dict[str, Any]]] = {}
         self._epg_name_to_id: Dict[str, str] = {}
+        self._epg_refresh_lock = threading.Lock()
+        self._epg_last_attempt = dt.datetime.now(dt.timezone.utc)
         self._load_channels()
         self._load_epg()
 
@@ -441,14 +449,41 @@ class TVSkill(BaseSkill):
         for channel_id, rows in epg_by_id.items():
             rows.sort(key=lambda p: p["start"])
 
+        if not epg_by_id:
+            return
+
         self._epg_by_channel_id = epg_by_id
         self._epg_name_to_id = name_to_id
 
-        if epg_by_id:
-            self._bind_epg_to_channels()
+        self._bind_epg_to_channels()
+
+    def _refresh_epg_if_stale(self) -> None:
+        now_utc = dt.datetime.now(dt.timezone.utc)
+        with self._epg_refresh_lock:
+            if now_utc - self._epg_last_attempt < EPG_REFRESH_INTERVAL:
+                return
+            self._epg_last_attempt = now_utc
+
+        self._load_epg()
 
     def _bind_epg_to_channels(self) -> None:
+        compact_name_to_id: Dict[str, str] = {}
+        ambiguous_names: set[str] = set()
+        for name_key, channel_id in self._epg_name_to_id.items():
+            if channel_id not in self._epg_by_channel_id:
+                continue
+            compact = _compact_channel_key(name_key)
+            existing = compact_name_to_id.get(compact)
+            if existing and existing != channel_id:
+                ambiguous_names.add(compact)
+            else:
+                compact_name_to_id[compact] = channel_id
+
+        for compact in ambiguous_names:
+            compact_name_to_id.pop(compact, None)
+
         for key, channel in self._channels.items():
+            channel.pop("epg_id", None)
             candidates: List[str] = []
             for raw in (
                 channel.get("tvg_id", ""),
@@ -469,6 +504,12 @@ class TVSkill(BaseSkill):
                     break
                 mapped = self._epg_name_to_id.get(candidate, "")
                 if mapped and mapped in self._epg_by_channel_id:
+                    epg_id = mapped
+                    break
+
+                compact = _compact_channel_key(candidate)
+                mapped = compact_name_to_id.get(compact, "")
+                if mapped:
                     epg_id = mapped
                     break
 
@@ -542,6 +583,7 @@ class TVSkill(BaseSkill):
             return {"action": "tv_off",
                     "message": "Televisione spenta, signore." if it else "Television closed, sir."}
 
+        self._refresh_epg_if_stale()
         channel = self._resolve_channel(cmd)
         if channel:
             channel_key = next(key for key, item in self._channels.items() if item is channel)
