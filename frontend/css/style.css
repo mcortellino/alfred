@@ -168,16 +168,23 @@ body.halloween-theme .halloween-decorations {
   filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
 }
 
+.halloween-bat svg,
+.halloween-pumpkin svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .halloween-bat {
   top: 8%;
   right: 8%;
-  font-size: clamp(2rem, 4vw, 3.5rem);
+  width: clamp(3.5rem, 7vw, 5.5rem);
   animation: halloween-bat-float 4s ease-in-out infinite;
 }
 
 .halloween-pumpkin {
   bottom: 5%;
-  font-size: clamp(2rem, 4vw, 3.25rem);
+  width: clamp(3.5rem, 7vw, 5.5rem);
 }
 
 .halloween-pumpkin-left {
@@ -186,7 +193,7 @@ body.halloween-theme .halloween-decorations {
 
 .halloween-pumpkin-right {
   right: 5%;
-  font-size: clamp(1.6rem, 3.2vw, 2.6rem);
+  width: clamp(2.8rem, 5.5vw, 4.5rem);
 }
 
 @keyframes halloween-bat-float {
